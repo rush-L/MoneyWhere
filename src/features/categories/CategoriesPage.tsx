@@ -1,13 +1,20 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { readThrough, type ReadResult } from '../offline/db/cache'
 import { useOffline } from '../offline/hooks/OfflineProvider'
+import { categoriesKey } from '../offline/localFinance'
+import { staleNote } from '../offline/syncLabels'
 import type { Wallet } from '../wallets/wallet'
 import { groupCategories, parseCategoryName, type Category } from './category'
 import { createCategoryService } from './categoryService'
 
-export function CategoriesPage({ wallet, onBack }: { wallet: Wallet; onBack: () => void }) {
+export function CategoriesPage({ wallet, userId, onBack }: { wallet: Wallet; userId: string; onBack: () => void }) {
   const service = useMemo(() => (supabase ? createCategoryService(supabase) : null), [])
-  const { online } = useOffline()
+  const { online, cache } = useOffline()
+  const seq = useRef(0) // newest load wins
+  const initial = useRef(true) // first load may show the saved snapshot while revalidating; reloads after a write may not
+  const [stale, setStale] = useState(false) // showing the saved snapshot (not confirmed by the server)
+  const [checking, setChecking] = useState(false)
   const [categories, setCategories] = useState<Category[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [name, setName] = useState('')
@@ -17,22 +24,31 @@ export function CategoriesPage({ wallet, onBack }: { wallet: Wallet; onBack: () 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const isOwner = wallet.role === 'owner' // UX only; RLS enforces it
+  const isOwner = wallet.role === 'owner' && !stale // UX only; RLS enforces it. Never edit from an unconfirmed snapshot
 
   const load = useCallback(
-    () =>
-      service?.list(wallet.id).then(
-        (c) => {
-          setCategories(c)
-          setLoadError(null)
-        },
-        (e: Error) => setLoadError(e.message),
-      ),
-    [service, wallet.id],
+    (swr = false) => {
+      if (!service) return
+      const n = ++seq.current
+      const apply = (r: ReadResult<Category[]>) => {
+        if (n !== seq.current) return
+        setCategories(r.data)
+        setStale(r.stale)
+        setChecking(!!r.revalidating)
+        setLoadError(null)
+      }
+      return readThrough(cache, categoriesKey(userId, wallet.id), () => service.list(wallet.id), swr ? apply : undefined).then(
+        apply,
+        (e: Error) => n === seq.current && setLoadError(e.message),
+      )
+    },
+    [service, wallet.id, userId, cache],
   )
 
   useEffect(() => {
-    if (online) void load() // no saved copy of categories: offline a request could only fail slowly
+    // offline: readThrough answers from the snapshot without a request, or fails at once when there is none
+    void load(initial.current)
+    initial.current = false
   }, [load, online])
 
   /** Runs a write, then reloads. Errors show next to the forms. */
@@ -112,6 +128,7 @@ export function CategoriesPage({ wallet, onBack }: { wallet: Wallet; onBack: () 
       <button type="button" className="link" onClick={onBack}>← Wallets</button>
       <h2>{wallet.name} · Categories</h2>
       {loadError && online && <p role="alert" className="error">{loadError}</p>}
+      {stale && <p role="status"><small>{staleNote(checking)}</small></p>}
       {!online && !categories && <p role="status">Categories aren't available offline yet. Connect to the internet to see them.</p>}
       {!categories && !loadError && online && <p role="status">Loading categories…</p>}
       {categories?.length === 0 && <p>No categories yet.{isOwner ? ' Add your first one below.' : ''}</p>}
@@ -130,7 +147,7 @@ export function CategoriesPage({ wallet, onBack }: { wallet: Wallet; onBack: () 
         </ul>
       )}
       {formError && <p role="alert" className="error">{formError}</p>}
-      {!online && !categories ? null : isOwner ? (
+      {isOwner ? (
         <form onSubmit={add} noValidate>
           <strong>New category</strong>
           <label>Category name<input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} disabled={busy} /></label>
@@ -143,7 +160,7 @@ export function CategoriesPage({ wallet, onBack }: { wallet: Wallet; onBack: () 
           </label>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add Category'}</button>
         </form>
-      ) : (
+      ) : stale ? null : (
         <small>Only the wallet owner can manage categories.</small>
       )}
     </section>

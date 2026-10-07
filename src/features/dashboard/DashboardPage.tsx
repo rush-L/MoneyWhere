@@ -3,9 +3,10 @@ import { formatMinor } from '../../domain/finance'
 import { supabase } from '../../lib/supabase'
 import { BudgetsPage } from '../budgets/BudgetsPage'
 import { currentMonth, monthLabel } from '../budgets/budget'
-import { readThrough, walletsKey } from '../offline/db/cache'
+import { readThrough, walletsKey, type ReadResult } from '../offline/db/cache'
 import { useOffline, useWatchWallet } from '../offline/hooks/OfflineProvider'
 import { loadDashboard, projectDashboard } from '../offline/localFinance'
+import { staleNote } from '../offline/syncLabels'
 import { createWalletService } from '../wallets/walletService'
 import type { Wallet } from '../wallets/wallet'
 import { pickWallet, type DashboardInputs } from './dashboard'
@@ -40,7 +41,11 @@ export function DashboardPage({ userId }: { userId: string }) {
   const [budgetsOpen, setBudgetsOpen] = useState(false)
 
   const load = useCallback(
-    () => walletService && readThrough(cache, walletsKey(userId), () => walletService.list(userId)).then((r) => { setWallets(r.data); setError(false) }, () => setError(true)),
+    () => {
+      if (!walletService) return
+      const apply = (r: ReadResult<Wallet[]>) => { setWallets(r.data); setError(false) }
+      return readThrough(cache, walletsKey(userId), () => walletService.list(userId), apply).then(apply, () => setError(true)) // snapshot first, server list replaces it
+    },
     [walletService, userId, cache],
   )
   useEffect(() => {
@@ -52,7 +57,7 @@ export function DashboardPage({ userId }: { userId: string }) {
   const wallet = pickWallet(wallets, walletId)
   if (!wallet) return <section className="card"><h2>Dashboard</h2><p>No wallets yet.<br />Create a wallet to get started.</p></section>
   // Remounting DashboardView on return reloads it, so edits made in Budgets show up.
-  if (budgetsOpen) return <BudgetsPage wallet={wallet} onBack={() => setBudgetsOpen(false)} />
+  if (budgetsOpen) return <BudgetsPage wallet={wallet} userId={userId} onBack={() => setBudgetsOpen(false)} />
 
   return (
     <section className="card">
@@ -82,17 +87,20 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
   }, [items])
   const [snap, setSnap] = useState<DashboardInputs | null>(null)
   const [stale, setStale] = useState(false) // showing the last saved snapshot because the server is unreachable
+  const [checking, setChecking] = useState(false) // ...and a background refresh is under way
+  const tick0 = useRef(syncedTick) // the first load may show the snapshot while revalidating; reloads after a sync may not
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(
-    () => {
+    (initial = false) => {
       const n = ++seq.current
-      return service && loadDashboard(cache, service, userId, wallet.id, month, itemsRef.current).then((r) => { if (n === seq.current) { setSnap(r.data); setStale(r.stale); setError(null) } }, (e: Error) => { if (n === seq.current) setError(e.message) })
+      const apply = (r: ReadResult<DashboardInputs>) => { if (n === seq.current) { setSnap(r.data); setStale(r.stale); setChecking(!!r.revalidating); setError(null) } }
+      return service && loadDashboard(cache, service, userId, wallet.id, month, itemsRef.current, initial ? apply : undefined).then(apply, (e: Error) => { if (n === seq.current) setError(e.message) })
     },
     [service, cache, userId, wallet.id, month],
   )
   useEffect(() => {
-    void load()
+    void load(syncedTick === tick0.current)
   }, [load, syncedTick]) // syncedTick: a queued transaction just synced, so the server is the baseline now
   // Server baseline + pending outbox items; recomputed live, no refetch when the queue changes.
   const data = useMemo(() => (snap ? projectDashboard(snap, items, wallet.id) : null), [snap, items, wallet.id])
@@ -105,7 +113,7 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
   return (
     <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
       <strong>{monthLabel(month)}</strong>
-      {stale && <p role="status"><small>Showing data saved on this device. Reconnect to refresh.</small></p>}
+      {stale && <p role="status"><small>{staleNote(checking)}</small></p>}
       <div className="stat">
         <small>Total Balance</small>
         {data.accountCount === 0 ? <span>No accounts yet.<br />Add an account to start tracking your money.</span> : <b>{peso(data.totalBalance)}</b>}

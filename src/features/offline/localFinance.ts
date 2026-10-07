@@ -3,7 +3,7 @@ import type { createAccountService } from '../accounts/accountService'
 import { buildDashboard, type DashboardData, type DashboardInputs } from '../dashboard/dashboard'
 import type { createDashboardServiceFor } from '../dashboard/dashboardService'
 import type { createTransactionService } from '../transactions/transactionService'
-import { readThrough, type Cache } from './db/cache'
+import { readThrough, type Cache, type ReadResult } from './db/cache'
 import type { OutboxItem } from './outbox/outbox'
 import { localBalances, localSpend } from './outbox/projection'
 
@@ -13,6 +13,8 @@ import { localBalances, localSpend } from './outbox/projection'
  * shows immediately and a synced one drops out without a refetch. No IndexedDB or React in the projections.
  */
 export const accountsKey = (userId: string, walletId: string) => `${userId}:accounts:${walletId}`
+export const categoriesKey = (userId: string, walletId: string) => `${userId}:categories:${walletId}`
+export const budgetsKey = (userId: string, walletId: string, month: string) => `${userId}:budgets:${walletId}:${month}`
 export const dashboardKey = (userId: string, walletId: string, month: string) => `${userId}:dashboard:${walletId}:${month}`
 
 export interface AccountsSnapshot {
@@ -31,11 +33,12 @@ export function loadAccounts(
   userId: string,
   walletId: string,
   items: readonly OutboxItem[],
+  onSettled?: (r: ReadResult<AccountsSnapshot>) => void,
 ) {
   return readThrough<AccountsSnapshot>(cache, accountsKey(userId, walletId), async () => {
     const [accounts, confirmed] = await Promise.all([svc.accounts.list(walletId), svc.tx.existingIds(pendingIds(items, walletId))])
     return { accounts, confirmed }
-  })
+  }, onSettled)
 }
 
 export function loadDashboard(
@@ -45,13 +48,14 @@ export function loadDashboard(
   walletId: string,
   month: string,
   items: readonly OutboxItem[],
+  onSettled?: (r: ReadResult<DashboardInputs>) => void,
 ) {
   return readThrough<DashboardInputs>(cache, dashboardKey(userId, walletId, month), async () => {
     const d = await svc.load(walletId, month, pendingIds(items, walletId))
     // the Accounts page reads the same baseline, so it also works offline after only the Dashboard was opened
     cache?.put(accountsKey(userId, walletId), { accounts: d.accounts, confirmed: d.confirmed }).catch((e) => console.error('[offline] cache write failed', e))
     return d
-  })
+  }, onSettled)
 }
 
 export const projectAccounts = (s: { accounts: readonly Account[]; confirmed: readonly string[] }, items: readonly OutboxItem[], walletId: string): Account[] =>

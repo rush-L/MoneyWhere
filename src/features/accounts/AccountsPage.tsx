@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { formatMinor } from '../../domain/finance'
 import { supabase } from '../../lib/supabase'
 import { useOffline, useWatchWallet } from '../offline/hooks/OfflineProvider'
+import type { ReadResult } from '../offline/db/cache'
 import { loadAccounts, projectAccounts, type AccountsSnapshot } from '../offline/localFinance'
+import { staleNote } from '../offline/syncLabels'
 import { createTransactionService } from '../transactions/transactionService'
 import type { Wallet } from '../wallets/wallet'
 import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABELS, parseNewAccount, type Account } from './account'
@@ -22,6 +24,8 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
   }, [items])
   const [snap, setSnap] = useState<AccountsSnapshot | null>(null)
   const [stale, setStale] = useState(false) // showing the last saved snapshot because the server is unreachable
+  const [checking, setChecking] = useState(false) // ...and a background refresh is under way
+  const tick0 = useRef(syncedTick) // the first load may show the snapshot while revalidating; reloads after a sync may not
   const [loadError, setLoadError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [editing, setEditing] = useState<Account | null>(null)
@@ -31,18 +35,20 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
   const isOwner = wallet.role === 'owner' // UX only; RLS enforces it
 
   const load = useCallback(
-    () => {
+    (initial = false) => {
       const n = ++seq.current
+      const apply = (r: ReadResult<AccountsSnapshot>) => {
+        if (n !== seq.current) return
+        setSnap(r.data)
+        setStale(r.stale)
+        setChecking(!!r.revalidating)
+        setLoadError(null)
+      }
       return (
         service &&
         txService &&
-        loadAccounts(cache, { accounts: service, tx: txService }, userId, wallet.id, itemsRef.current).then(
-          (r) => {
-            if (n !== seq.current) return
-            setSnap(r.data)
-            setStale(r.stale)
-            setLoadError(null)
-          },
+        loadAccounts(cache, { accounts: service, tx: txService }, userId, wallet.id, itemsRef.current, initial ? apply : undefined).then(
+          apply,
           (e: Error) => n === seq.current && setLoadError(e.message),
         )
       )
@@ -51,7 +57,7 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
   )
 
   useEffect(() => {
-    void load()
+    void load(syncedTick === tick0.current)
   }, [load, syncedTick]) // syncedTick: a queued transaction just synced, so the server is the baseline now
   // Server baseline + pending outbox items (the same projection the Dashboard and Transactions use).
   const accounts = useMemo(() => (snap ? projectAccounts(snap, items, wallet.id) : null), [snap, items, wallet.id])
@@ -104,7 +110,7 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
       <button type="button" className="link" onClick={onBack}>← Wallets</button>
       <h2>{wallet.name} · Accounts</h2>
       {loadError && <p role="alert" className="error">{loadError}</p>}
-      {stale && <p role="status"><small>Showing data saved on this device. Reconnect to refresh.</small></p>}
+      {stale && <p role="status"><small>{staleNote(checking)}</small></p>}
       {!accounts && !loadError && <p role="status">Loading accounts…</p>}
       {accounts?.length === 0 && <p>No accounts yet.{isOwner ? ' Create your first one below.' : ''}</p>}
       {accounts && accounts.length > 0 && (

@@ -1,5 +1,9 @@
 import type { OutboxStatus } from './outbox/outbox'
 
+/** Shown whenever data comes from this device's snapshot instead of the server. */
+export const staleNote = (revalidating: boolean) =>
+  revalidating ? 'Showing data saved on this device. Checking for updates…' : 'Showing data saved on this device. Reconnect to refresh.'
+
 export type SyncTone = 'info' | 'warn' | 'error'
 
 /**

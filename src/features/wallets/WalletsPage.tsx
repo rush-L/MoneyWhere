@@ -5,7 +5,7 @@ import { AccountsPage } from '../accounts/AccountsPage'
 import { BudgetsPage } from '../budgets/BudgetsPage'
 import { CategoriesPage } from '../categories/CategoriesPage'
 import { TransactionsPage } from '../transactions/TransactionsPage'
-import { readThrough, walletsKey } from '../offline/db/cache'
+import { readThrough, walletsKey, type ReadResult } from '../offline/db/cache'
 import { useOffline } from '../offline/hooks/OfflineProvider'
 import { createWalletService } from './walletService'
 
@@ -20,19 +20,20 @@ export function WalletsPage({ userId }: { userId: string }) {
   const [selected, setSelected] = useState<{ wallet: Wallet; page: 'accounts' | 'categories' | 'transactions' | 'budgets' } | null>(null)
 
   const load = useCallback(
-    () =>
-      service && readThrough(cache, walletsKey(userId), () => service.list(userId)).then(
-        (r) => {
-          setWallets(r.data) // offline: last saved list, so a queued transaction stays reachable
-          setLoadError(null)
-        },
-        (e: Error) => setLoadError(e.message),
-      ),
+    (initial = false) => {
+      if (!service) return
+      const apply = (r: ReadResult<Wallet[]>) => {
+        setWallets(r.data) // offline: last saved list, so a queued transaction stays reachable
+        setLoadError(null)
+      }
+      // first load: snapshot at once, server list replaces it; after create/delete the server list is required
+      return readThrough(cache, walletsKey(userId), () => service.list(userId), initial ? apply : undefined).then(apply, (e: Error) => setLoadError(e.message))
+    },
     [service, userId, cache],
   )
 
   useEffect(() => {
-    void load()
+    void load(true)
   }, [load])
 
   async function create(ev: FormEvent) {
@@ -55,9 +56,9 @@ export function WalletsPage({ userId }: { userId: string }) {
   if (selected) {
     const back = () => setSelected(null)
     if (selected.page === 'transactions') return <TransactionsPage wallet={selected.wallet} userId={userId} onBack={back} />
-    if (selected.page === 'budgets') return <BudgetsPage wallet={selected.wallet} onBack={back} />
+    if (selected.page === 'budgets') return <BudgetsPage wallet={selected.wallet} userId={userId} onBack={back} />
     if (selected.page === 'accounts') return <AccountsPage wallet={selected.wallet} userId={userId} onBack={back} />
-    return <CategoriesPage wallet={selected.wallet} onBack={back} />
+    return <CategoriesPage wallet={selected.wallet} userId={userId} onBack={back} />
   }
 
   return (

@@ -20,23 +20,39 @@ export function createCache(db: IDBDatabase) {
 export const walletsKey = (userId: string) => `${userId}:wallets`
 export const walletKey = (userId: string, walletId: string) => `${userId}:wallet:${walletId}`
 
+export type ReadResult<T> = { data: T; stale: boolean; revalidating?: boolean }
+
 /**
  * Network first; a successful read refreshes the snapshot, a failed one falls back to it (`stale: true`).
  * When the browser reports offline the snapshot is used straight away: a request would only fail after
  * supabase-js has retried it with backoff (~7 s), and nothing could come of it.
+ *
+ * Stale-while-revalidate (opt in with `onSettled`, for first loads only): if a snapshot exists it is returned at once
+ * as `{ stale: true, revalidating: true }`, the fetch runs in the background and `onSettled` is called exactly once
+ * with the server data (`stale: false`) or, if the fetch failed, the same snapshot (`stale: true`). The snapshot is
+ * never presented as confirmed. After a mutation or sync, callers must NOT pass `onSettled`: they need server data.
  */
-export async function readThrough<T>(cache: Cache | null, key: string, fetcher: () => Promise<T>): Promise<{ data: T; stale: boolean }> {
-  if (cache && navigator.onLine === false) {
-    const snap = await cache.get<T>(key).catch(() => null)
-    if (snap !== null) return { data: snap, stale: true }
+export async function readThrough<T>(cache: Cache | null, key: string, fetcher: () => Promise<T>, onSettled?: (r: ReadResult<T>) => void): Promise<ReadResult<T>> {
+  const snapshot = cache ? await cache.get<T>(key).catch(() => null) : null
+  if (snapshot !== null && (navigator.onLine === false || onSettled)) {
+    if (onSettled && navigator.onLine !== false) {
+      fetcher().then(
+        (data) => {
+          cache?.put(key, data).catch((e) => console.error('[offline] cache write failed', e))
+          onSettled({ data, stale: false })
+        },
+        () => onSettled({ data: snapshot, stale: true }),
+      )
+      return { data: snapshot, stale: true, revalidating: true }
+    }
+    return { data: snapshot, stale: true }
   }
   try {
     const data = await fetcher()
     cache?.put(key, data).catch((e) => console.error('[offline] cache write failed', e))
     return { data, stale: false }
   } catch (e) {
-    const snap = cache ? await cache.get<T>(key).catch(() => null) : null
-    if (snap === null) throw e
-    return { data: snap, stale: true }
+    if (snapshot === null) throw e
+    return { data: snapshot, stale: true }
   }
 }

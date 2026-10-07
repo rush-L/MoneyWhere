@@ -5,14 +5,15 @@ import type { Account } from '../accounts/account'
 import { createAccountService } from '../accounts/accountService'
 import { groupCategories, type Category } from '../categories/category'
 import { createCategoryService } from '../categories/categoryService'
-import { readThrough, walletKey } from '../offline/db/cache'
+import { readThrough, walletKey, type ReadResult } from '../offline/db/cache'
 import { useOffline, useWatchWallet } from '../offline/hooks/OfflineProvider'
 import { countedPending, localBalances, mergeLocal, reconcile, type LocalTransaction } from '../offline/outbox/projection'
-import { describeSync } from '../offline/syncLabels'
+import { describeSync, staleNote } from '../offline/syncLabels'
 import type { Wallet } from '../wallets/wallet'
 import { canManage, parseTransaction, todayLocal, type TransactionRow } from './transaction'
 import { createTransactionService, TransactionConflictError } from './transactionService'
 
+type TxSnapshot = { list: TransactionRow[]; accs: Account[]; cats: Category[] }
 const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '' })
 
 export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; userId: string; onBack: () => void }) {
@@ -21,6 +22,8 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
   useWatchWallet(wallet.id)
   const seq = useRef(0) // newest load wins
   const [stale, setStale] = useState(false) // showing the last saved snapshot because the server is unreachable
+  const [checking, setChecking] = useState(false) // ...and a background refresh is under way
+  const tick0 = useRef(syncedTick) // the first load may show the snapshot while revalidating; reloads after a sync may not
   const [notice, setNotice] = useState<string | null>(null)
   const [txs, setTxs] = useState<TransactionRow[] | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -40,31 +43,33 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
   }, [items])
 
   const load = useCallback(
-    () => {
+    (initial = false) => {
       const n = ++seq.current
+      const apply = ({ data, stale, revalidating }: ReadResult<TxSnapshot>) => {
+        if (n !== seq.current) return
+        // Server aggregate is authoritative once synced; a mismatch with what we showed is logged, not "fixed".
+        if (!stale && expectedRef.current && countedPending(data.list, itemsRef.current, wallet.id).length === 0) {
+          const diff = reconcile(expectedRef.current, data.accs)
+          if (diff.length) console.warn('[offline] balance reconciliation mismatch (server value kept)', diff)
+          expectedRef.current = null
+        }
+        setTxs(data.list)
+        setAccounts(data.accs)
+        setCategories(data.cats)
+        setStale(stale)
+        setChecking(!!revalidating)
+        setLoadError(null)
+      }
       return txService &&
-      readThrough(cache, walletKey(userId, wallet.id), async () => {
+      readThrough<TxSnapshot>(cache, walletKey(userId, wallet.id), async () => {
         const [list, accs, cats] = await Promise.all([
           txService.list(wallet.id),
           createAccountService(supabase!).list(wallet.id),
           createCategoryService(supabase!).list(wallet.id),
         ])
         return { list, accs, cats }
-      }).then(
-        ({ data, stale }) => {
-          if (n !== seq.current) return
-          // Server aggregate is authoritative once synced; a mismatch with what we showed is logged, not "fixed".
-          if (!stale && expectedRef.current && countedPending(data.list, itemsRef.current, wallet.id).length === 0) {
-            const diff = reconcile(expectedRef.current, data.accs)
-            if (diff.length) console.warn('[offline] balance reconciliation mismatch (server value kept)', diff)
-            expectedRef.current = null
-          }
-          setTxs(data.list)
-          setAccounts(data.accs)
-          setCategories(data.cats)
-          setStale(stale)
-          setLoadError(null)
-        },
+      }, initial ? apply : undefined).then(
+        apply,
         (e: Error) => n === seq.current && setLoadError(e.message),
       )
     },
@@ -72,7 +77,7 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
   )
 
   useEffect(() => {
-    void load()
+    void load(syncedTick === tick0.current)
   }, [load, syncedTick]) // syncedTick: a queued transaction just synced, so refresh server balances
 
   // Local view = server baseline + unsynced items (domain accountBalance replays only the pending rows).
@@ -152,7 +157,7 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
       <button type="button" className="link" onClick={onBack}>← Wallets</button>
       <h2>{wallet.name} · Transactions</h2>
       {loadError && <p role="alert" className="error">{loadError}</p>}
-      {stale && <p role="status"><small>Showing data saved on this device. Reconnect to refresh.</small></p>}
+      {stale && <p role="status"><small>{staleNote(checking)}</small></p>}
       {notice && <p role="status">{notice}</p>}
       {!shown && !loadError && <p role="status">Loading transactions…</p>}
       {shown?.length === 0 && <p>No transactions yet.</p>}

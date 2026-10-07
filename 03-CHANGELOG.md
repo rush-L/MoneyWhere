@@ -2,6 +2,50 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase 14 — Hardening & release readiness (2026-10-07)
+
+No new financial features, no change to financial formulas, transaction semantics, the mutation RPC, RLS or Realtime. `01-APP-SPEC.md` and `02-ROADMAP.md` unchanged.
+
+### Status: COMPLETE (pending and deferred items documented, not failures)
+- **Completed:** profile grant hardening; OAuth avatar propagation; snapshot-first / stale-while-revalidate reads; offline Categories/Budgets reads; hosted cleanup tooling (dry-run); hosted profile verification; security verification.
+- **Verified:** hosted 8 files / 82 tests passed / 0 failed; TypeScript, lint and build PASS; live profile grants verified; anonymous profile access denied; column-level profile update verified; existing mutation RPC/RLS behaviour unchanged.
+- **Pending:** (1) production Auth configuration, which needs the production origin/Site URL, redirect URLs, `VITE_AUTH_REDIRECT_URL`, an email-confirmation decision plus SMTP, and the Google OAuth client id/secret (see below); (2) cleanup `--apply`, awaiting explicit approval. The dry run (9 test users, 2 test wallets, associated data) is the current state and nothing has been deleted.
+- **Deferred:** owner offline editing of another member's transaction, to its own phase. It needs outbox ownership/authorization state, replay-time authorization, handling a user no longer authorized, local projection of another member's transaction, and conflict/security design. The current authorization model is not weakened.
+
+### Migrations (applied to the hosted dev project; forward-only)
+- `20261019000000_profiles_grants.sql`: `profiles` was the only table still carrying Supabase's default grants (checked on the live project via `information_schema`): `authenticated` and `anon` held `REFERENCES, TRIGGER, TRUNCATE`, `anon` also `SELECT`. `TRUNCATE` is not subject to RLS, so any signed-in user could have emptied `profiles`. Now `revoke all`, then `grant select` + `grant update (display_name, avatar_url)` to `authenticated`; `anon` has nothing. The app never used the removed privileges; the signup trigger is `security definer`, and service_role is unaffected. Observable change: an anonymous read of `profiles` is now "permission denied" (42501) instead of an empty list. Every other table already had its grants reset in its own migration (verified live: only `SELECT`/`DELETE` remain where intended; `transactions` and `transaction_mutations` have `SELECT` only).
+- `20261020000000_profile_avatar_from_oauth.sql`: `handle_new_user` also copies `avatar_url` or `picture` (Google) from the signup metadata into `profiles.avatar_url`, only if it already satisfies the table's https/length constraint; anything else is dropped and signup still succeeds. Existing profiles are not back-filled.
+
+### Offline / cache
+- **Stale-while-revalidate for first loads.** `readThrough(cache, key, fetcher, onSettled?)`: with `onSettled` and a snapshot, the snapshot is returned at once as `{stale: true, revalidating: true}`, the fetch runs in the background and `onSettled` gets the server data (`stale: false`) or, on failure, the same snapshot (`stale: true`). No timeout was added; supabase-js retry is untouched. Used only for the first load of Dashboard, Wallets, Accounts, Transactions, Categories and Budgets. Reloads after a sync, Realtime tick or write do not pass `onSettled` and still wait for the server, so a just-saved change is never overwritten by an old snapshot. Pending local items are still projected on top by the unchanged `projectAccounts`/`projectDashboard`/`mergeLocal`; no new calculation.
+- Stale data is labelled ("Showing data saved on this device. Checking for updates…" while revalidating, "…Reconnect to refresh." once it failed or offline) and never treated as confirmed: the Transactions balance reconciliation runs only on fresh data, and the owner create/rename/delete forms on Categories and Budgets are hidden while the data is a snapshot.
+- **Categories and Budgets now have offline reads** (read-only), as per-user snapshots in the existing `cache` store (`<uid>:categories:<wallet>`, `<uid>:budgets:<wallet>:<month>`), with no IndexedDB schema change. Budget spending shown offline is the saved server rows plus pending local expenses, via the existing `localSpend`.
+- The "not available offline yet" messages remain only when no snapshot exists for that wallet/month.
+
+### Hosted test cleanup
+- `supabase/hosted/cleanup.mjs`: dry-run by default; `--apply` deletes. Refuses unless `--project-ref` equals both the linked project and the host in `.env.local`. Matches only `reambillo.russel+mw<letters><13-digit timestamp><suffix>@gmail.com`; deletes a wallet only if every member is a matched user; keeps any user who belongs to a wallet with a non-test member. **Not run with `--apply`** (awaiting approval). The dry run found 9 users and 2 wallets (`mwoff…-WA/-WB`, left by an earlier offline-suite run). Left untouched: the 2 `mw3a/mw3b…` users (older address format), the real users, and the wallet `try`.
+- `supabase/hosted/profiles.verify.ts` (new): live grants, no direct profile insert/delete/protected-column update, anon denied, avatar copy (valid https `picture` copied, `javascript:` dropped, none).
+
+### Production authentication: what remains (environment-specific, NOT configured here)
+`supabase/config.toml` has no site URL, redirect or provider settings and none were invented. In the production Supabase dashboard:
+1. Authentication → URL Configuration: set **Site URL** to the production origin and add it (and any preview origins you intend to use) to **Redirect URLs**; set `VITE_AUTH_REDIRECT_URL` in the production build to the same origin (the app already passes it as `emailRedirectTo` / OAuth `redirectTo`, falling back to `window.location.origin`).
+2. Authentication → Providers → Email: decide **Confirm email**. Signup already handles both (it reports "needs confirmation" when no session is returned and detects an already-registered address). Configure custom SMTP before launch (the built-in mailer is rate-limited and for testing).
+3. Authentication → Providers → Google: create the OAuth client in Google Cloud, add Supabase's callback URL (`https://<project-ref>.supabase.co/auth/v1/callback`) as an authorized redirect URI, and paste the client id/secret into Supabase.
+4. Not verified: the real email-confirmation round trip and Google sign-in (they need those external settings and a real mailbox/Google account). The avatar copy is verified through the signup trigger with metadata, not through a live Google login.
+- Pre-existing, not changed: a Google display name longer than 50 characters would violate `profiles_display_name_len` inside the signup trigger and fail the signup.
+
+### Owner offline editing: deferred (decision)
+Replay is own-only by design (`sendItem` always sends `ownOnly: true`; the outbox item does not record the user's role). Allowing an owner's offline edit of another member's transaction needs a new field on persisted outbox items, handling of "no longer owner at replay" (FORBIDDEN), and projection of other members' rows. That touches the in-doubt/version/ledger rules this phase must not change. Recommend its own phase. Owner edits of another member's transaction stay online-only.
+
+### Verification
+- Local: `tsc -b`, eslint and `npm run build` pass; **308 tests, 26 files** passed (301 before; new: SWR cases, per-user cache keys, profile grants, signup avatar copy).
+- Hosted (`supabase/hosted/vitest.hosted.config.ts`, real dev project): after the grants migration **7 files / 80 tests passed** (535 s); final run after both migrations and all code changes **8 files / 82 tests passed**, 0 failed (549 s). Live grants checked by query after the migration.
+- Browser (Chromium from the Playwright cache against the production build + service worker and the hosted dev project; throwaway user/wallet, deleted afterwards): "lie-fi" (browser online, every Supabase request held 12 s then aborted): Dashboard visible in 83 ms with the "Checking for updates…" banner, changing to "Reconnect to refresh" after the background fetch failed (was ~7 s); Categories 74 ms. Real offline cold reload: Dashboard 82 ms, Categories and Budgets rendered from snapshots with no create/rename/delete controls. IndexedDB cache keys are all prefixed with the user id.
+- Not re-run in the browser this phase: pending offline items on top of a revalidating snapshot, conflict/blocked flows, user switching, a real Google/email-confirmation login. Pending/outbox/user-binding/version/idempotency behaviour is covered by the unchanged unit and hosted suites that passed.
+
+### Remaining limitations / deferred
+- Owner offline edit (above); Budgets/Categories offline are read-only (no offline writes by design); production auth settings (above); cleanup `--apply` not yet run; Budget spending still passes an empty confirmed-id list to `localSpend` (pre-existing); offline with no snapshot, a doomed request still starts and fails in the background.
+
 ## Phase 13 — Mobile, offline & UX hardening (2026-10-06)
 
 No new financial features, no migration, no change to financial formulas or to any applied migration.
@@ -36,7 +80,8 @@ No new financial features, no migration, no change to financial formulas or to a
 ### Verification
 - Local: 301 tests (295 + 6 new: sync sends the stored record, removed item not sent, attempted item refuses edit with explanation, `readThrough` offline uses the snapshot without a request, describeSync), `tsc -b`, eslint, `npm run build` pass.
 - Browser (Chromium via Playwright against the production build and the hosted dev project; offline = real network emulation, requests genuinely fail; DB results read with SQL, not UI): offline expense / income / transfer → pending, balances move, nothing sent while offline, reconnect syncs; create→edit keeps one create with the original UUID; edit and delete of a synced own transaction (version 2, row gone); conflict (A offline, owner B edits, A edits, reconnect → CONFLICT, server value kept, Keep server version clears it); user switching (A queues offline, signs out while offline, B signs in online: A's mutation not sent and still in IndexedDB; A signs back in: it syncs, `created_by` = A); Realtime + pending (write requests aborted so A keeps a pending item while the websocket stays up, B inserts, A shows B's row and the pending item with balances = server baseline + pending, then syncs); Budgets/Categories offline messages; cold open offline.
-- Hosted suites: see the result recorded in the completion report.
+- Hosted suites (`npx vitest run --config supabase/hosted/vitest.hosted.config.ts`, real hosted dev project, final run after all Phase 13 changes): **7 files, 80 tests passed**, 0 failed (542 s).
+- Cleanup confirmed by SQL: the 6 `mw13…` users, their 3 wallets and profiles are gone (0 rows). Only wallets whose members were all `mw13…` users were deleted.
 
 ### Remaining limitations
 - **Browser reports online but Supabase is unreachable** ("lie-fi"): the request still waits through supabase-js's retry backoff (~7 s) before the snapshot is used. No timeout was added (brief); a stale-while-revalidate read would remove it.

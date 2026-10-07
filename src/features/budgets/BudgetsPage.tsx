@@ -2,15 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { calculateBudgetStatus, formatMinor, spendingByBudgetCategory } from '../../domain/finance'
 import { supabase } from '../../lib/supabase'
 import type { Category } from '../categories/category'
+import { readThrough, type ReadResult } from '../offline/db/cache'
 import { useOffline, useWatchWallet } from '../offline/hooks/OfflineProvider'
+import { budgetsKey } from '../offline/localFinance'
 import { localSpend } from '../offline/outbox/projection'
+import { staleNote } from '../offline/syncLabels'
 import { createCategoryService } from '../categories/categoryService'
 import type { Wallet } from '../wallets/wallet'
 import { currentMonth, monthLabel, parseBudget, parseBudgetAmount, shiftMonth, type Budget } from './budget'
 import { createBudgetService, type SpendRow } from './budgetService'
 
-export function BudgetsPage({ wallet, onBack }: { wallet: Wallet; onBack: () => void }) {
-  const { items, syncedTick, online } = useOffline()
+type BudgetSnapshot = { cats: Category[]; budgets: Budget[]; spend: SpendRow[] }
+
+export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId: string; onBack: () => void }) {
+  const { items, syncedTick, online, cache } = useOffline()
+  const tick0 = useRef(syncedTick) // the first load may show the saved snapshot while revalidating; reloads after a sync or write may not
+  const [stale, setStale] = useState(false) // showing the saved snapshot (not confirmed by the server)
+  const [checking, setChecking] = useState(false)
   useWatchWallet(wallet.id)
   const seq = useRef(0) // newest load wins
   const service = useMemo(() => (supabase ? createBudgetService(supabase) : null), [])
@@ -24,26 +32,30 @@ export function BudgetsPage({ wallet, onBack }: { wallet: Wallet; onBack: () => 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const isOwner = wallet.role === 'owner' // UX only; RLS enforces it
+  const isOwner = wallet.role === 'owner' && !stale // UX only; RLS enforces it. Never edit from an unconfirmed snapshot
 
   const load = useCallback(
-    () => {
+    (swr = false) => {
       const n = ++seq.current
-      return Promise.all([categoryService!.list(wallet.id), service!.list(wallet.id, month), service!.spending(wallet.id, month)]).then(
-        ([cats, budgets, spend]) => {
-          if (n !== seq.current) return
-          setCategories(cats)
-          setData({ month, budgets, spend })
-          setLoadError(null)
-        },
-        (e: Error) => n === seq.current && setLoadError(e.message),
-      )
+      const apply = (r: ReadResult<BudgetSnapshot>) => {
+        if (n !== seq.current) return
+        setCategories(r.data.cats)
+        setData({ month, budgets: r.data.budgets, spend: r.data.spend })
+        setStale(r.stale)
+        setChecking(!!r.revalidating)
+        setLoadError(null)
+      }
+      return readThrough<BudgetSnapshot>(cache, budgetsKey(userId, wallet.id, month), async () => {
+        const [cats, budgets, spend] = await Promise.all([categoryService!.list(wallet.id), service!.list(wallet.id, month), service!.spending(wallet.id, month)])
+        return { cats, budgets, spend }
+      }, swr ? apply : undefined).then(apply, (e: Error) => n === seq.current && setLoadError(e.message))
     },
-    [service, categoryService, wallet.id, month],
+    [service, categoryService, wallet.id, month, userId, cache],
   )
 
   useEffect(() => {
-    if (online) void load() // offline: budgets have no saved copy, and a request could only fail slowly
+    // offline: readThrough answers from the snapshot without a request (or fails at once when there is none)
+    void load(syncedTick === tick0.current)
   }, [load, syncedTick, online]) // syncedTick: a sync finished or Realtime reported a change; online: back on the network
 
   async function run(action: () => Promise<void>, after: () => void) {
@@ -136,12 +148,12 @@ export function BudgetsPage({ wallet, onBack }: { wallet: Wallet; onBack: () => 
       </nav>
       {loadError && online && <p role="alert" className="error">{loadError}</p>}
       {!online && !loaded && <p role="status">Budget data isn't available offline yet. Connect to the internet to see your budgets.</p>}
-      {!online && loaded && <p role="status"><small>You're offline. These figures are from when this page was last loaded and may be out of date.</small></p>}
+      {stale && loaded && <p role="status"><small>{staleNote(checking)}</small></p>}
       {!loaded && !loadError && online && <p role="status">Loading budgets…</p>}
       {loaded && budgets.length === 0 && <p>No budgets for {monthLabel(month)}.{isOwner ? ' Create one below.' : ''}</p>}
       {budgets.length > 0 && <ul className="list">{budgets.map(card)}</ul>}
       {formError && <p role="alert" className="error">{formError}</p>}
-      {!online && !loaded ? null : isOwner ? (
+      {isOwner ? (
         <form onSubmit={add} noValidate>
           <strong>New budget for {monthLabel(month)}</strong>
           <label>
@@ -161,7 +173,7 @@ export function BudgetsPage({ wallet, onBack }: { wallet: Wallet; onBack: () => 
           </label>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add Budget'}</button>
         </form>
-      ) : (
+      ) : stale ? null : (
         <small>Only the wallet owner can manage budgets.</small>
       )}
     </section>

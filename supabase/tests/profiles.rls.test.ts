@@ -86,9 +86,26 @@ describe('profiles', () => {
     await expect(as(A, () => db.query('delete from public.profiles where id = $1', [A]))).rejects.toThrow(/permission denied/)
   })
 
-  it('anon sees nothing', async () => {
-    const r = await as(null, () => db.query('select id from public.profiles'))
-    expect(r.rows).toHaveLength(0)
+  it('anon has no access at all', async () => {
+    await expect(as(null, () => db.query('select id from public.profiles'))).rejects.toThrow(/permission denied/)
+  })
+
+  it('table privileges are exactly SELECT + column UPDATE for authenticated (no TRUNCATE/TRIGGER/REFERENCES)', async () => {
+    const t = await db.query<{ g: string; p: string }>(
+      `select grantee g, privilege_type p from information_schema.role_table_grants where table_schema='public' and table_name='profiles' and grantee in ('anon','authenticated') order by 1,2`)
+    expect(t.rows).toEqual([{ g: 'authenticated', p: 'SELECT' }])
+    const c = await db.query<{ column_name: string }>(
+      `select column_name from information_schema.column_privileges where table_schema='public' and table_name='profiles' and grantee='authenticated' and privilege_type='UPDATE' order by 1`)
+    expect(c.rows.map((r) => r.column_name)).toEqual(['avatar_url', 'display_name'])
+    await expect(as(A, () => db.query('truncate public.profiles'))).rejects.toThrow(/permission denied/)
+  })
+
+  it('signup copies a valid OAuth avatar (picture / avatar_url) and drops unsafe ones without failing', async () => {
+    const ids = ['33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666']
+    const metas = ['{"picture":"https://lh3.test/a.png"}', '{"avatar_url":"https://i.test/b.png"}', '{"picture":"javascript:alert(1)"}', '{"picture":"http://i.test/c.png"}']
+    for (const [i, m] of metas.entries()) await db.query('insert into auth.users values ($1, $2, $3)', [ids[i], `u${i}@x.test`, m])
+    const r = await db.query<{ avatar_url: string | null }>('select avatar_url from public.profiles where id = any($1) order by id', [ids])
+    expect(r.rows.map((x) => x.avatar_url)).toEqual(['https://lh3.test/a.png', 'https://i.test/b.png', null, null])
   })
 
   it('rejects unsafe avatar URLs and over-long names', async () => {
