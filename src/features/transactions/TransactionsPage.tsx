@@ -12,11 +12,18 @@ import { describeSync, staleNote } from '../offline/syncLabels'
 import type { Wallet } from '../wallets/wallet'
 import { canManage, parseTransaction, todayLocal, type TransactionRow } from './transaction'
 import { createTransactionService, TransactionConflictError } from './transactionService'
+import { Badge } from '../../ui/Badge'
+import { Button } from '../../ui/Button'
+import { Dialog } from '../../ui/Dialog'
+import { Field } from '../../ui/Field'
+import { Money } from '../../ui/Money'
+import { PageHeader } from '../../ui/PageHeader'
+import { State } from '../../ui/State'
 
 type TxSnapshot = { list: TransactionRow[]; accs: Account[]; cats: Category[] }
 const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '' })
 
-export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; userId: string; onBack: () => void }) {
+export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: string }) {
   const txService = useMemo(() => (supabase ? createTransactionService(supabase) : null), [])
   const { online, items, syncedTick, cache, saveTransaction, editTransaction, deleteTransaction, discardItem } = useOffline()
   useWatchWallet(wallet.id)
@@ -33,6 +40,7 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
   const [editing, setEditing] = useState<TransactionRow | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [formOpen, setFormOpen] = useState(false) // dialog visibility only; the form state above stays on this page
   const [formError, setFormError] = useState<string | null>(null)
   const isOwner = wallet.role === 'owner' // UX only; RLS enforces it
 
@@ -104,6 +112,7 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
       } else if ((await saveTransaction(wallet.id, parsed.value)) === 'queued') setNotice('Saved to device · Pending sync')
       setEditing(null)
       setForm(blank())
+      setFormOpen(false)
       await load() // offline this falls back to the saved snapshot; the queued item is merged in by `shown`
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Could not save the transaction.')
@@ -131,12 +140,19 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
   function startEdit(t: TransactionRow) {
     setEditing(t)
     setFormError(null)
+    setFormOpen(true)
     setForm({ type: t.type, accountId: t.account_id, destinationAccountId: t.destination_account_id ?? '', categoryId: t.category_id ?? '', amount: formatMinor(t.amount_minor), date: t.date, note: t.note ?? '' })
   }
   function cancelEdit() {
     setEditing(null)
     setFormError(null)
     setForm(blank())
+    setFormOpen(false)
+  }
+  // Closing the dialog cancels an edit (as Cancel did); a half-typed new transaction is kept, as the inline form kept it.
+  function closeForm() {
+    if (editing) cancelEdit()
+    else setFormOpen(false)
   }
 
   const groups = groupCategories(categories)
@@ -152,120 +168,131 @@ export function TransactionsPage({ wallet, userId, onBack }: { wallet: Wallet; u
   const syncEditable = (t: LocalTransaction) => !!t.sync && describeSync(t.sync, (items.find((i) => i.id === t.id)?.attempt_count ?? 0) > 0).editable
   const paidBy = (t: TransactionRow) => (t.paid_by_user_id === userId ? 'Me' : 'Another member')
 
+  const typeLabel = (t: TransactionRow) => (t.type === 'transfer' ? 'Transfer' : t.type === 'income' ? 'Income' : 'Expense')
+  const typeSign = (t: TransactionRow) => (t.type === 'transfer' ? '↔' : t.type === 'income' ? '+' : '−')
+  const typeTone = (t: TransactionRow) => (t.type === 'transfer' ? 'info' : t.type === 'income' ? 'good' : 'neutral')
+  // Presentation only: consecutive rows with the same date share a heading; order and content of `shown` are untouched.
+  const days: { date: string; rows: LocalTransaction[] }[] = []
+  for (const t of shown ?? []) {
+    const last = days[days.length - 1]
+    if (last && last.date === t.date) last.rows.push(t)
+    else days.push({ date: t.date, rows: [t] })
+  }
+
   return (
-    <section className="card">
-      <button type="button" className="link" onClick={onBack}>← Wallets</button>
-      <h2>{wallet.name} · Transactions</h2>
-      {loadError && <p role="alert" className="error">{loadError}</p>}
-      {stale && <p role="status"><small>{staleNote(checking)}</small></p>}
-      {notice && <p role="status">{notice}</p>}
-      {!shown && !loadError && <p role="status">Loading transactions…</p>}
-      {shown?.length === 0 && <p>No transactions yet.</p>}
-      {shown && shown.length > 0 && (
-        <ul className="list">
-          {shown.map((t) => (
-            <li key={t.id} className={t.sync ? 'pending' : undefined}>
-              <strong>{t.type === 'transfer' ? '↔' : t.type === 'income' ? '+' : '−'}₱{formatMinor(t.amount_minor)}</strong>{' '}
-              <small>{t.type === 'transfer' ? 'Transfer' : t.type === 'income' ? 'Income' : 'Expense'} · {t.date}</small>
-              <br />
-              {t.type === 'transfer' ? (
-                <small>↔ {accountName(t.account_id)} → {accountName(t.destination_account_id ?? '')}</small>
-              ) : (
-                <small>{accountName(t.account_id)} · {categoryName(t.category_id)} · Paid by: {paidBy(t)}</small>
-              )}
-              {t.note && <><br /><small>{t.note}</small></>}
-              {t.sync && (() => {
-                const d = describeSync(t.sync, (items.find((i) => i.id === t.id)?.attempt_count ?? 0) > 0)
-                return (
-                  <>
-                    <br />
-                    <small role="status" className={d.tone === 'error' ? 'error' : d.tone === 'warn' ? 'warn' : undefined}>{d.text}</small>
-                    {(t.sync === 'CONFLICT' || t.sync === 'BLOCKED') && (
-                      <>{' '}<button type="button" className="link" onClick={() => void discardItem(t.id).then(() => load())}>{t.sync === 'CONFLICT' ? 'Keep server version' : 'Dismiss'}</button></>
-                    )}
-                  </>
-                )
-              })()}
-              {(!t.sync || syncEditable(t)) && offlineEditable(t) && (
-                <>
-                  <br />
-                  <button type="button" className="link" onClick={() => startEdit(t)}>Edit</button>
-                  {confirmDelete === t.id ? (
-                    <>
-                      {' '}<button type="button" className="link" onClick={() => void remove(t)}>Confirm delete</button>
-                      {' '}<button type="button" className="link" onClick={() => setConfirmDelete(null)}>Cancel</button>
-                    </>
-                  ) : (
-                    <>{' '}<button type="button" className="link" onClick={() => setConfirmDelete(t.id)}>Delete</button></>
-                  )}
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {accounts.length === 0 ? (
-        txs && <small>Add an account first (owner), then record transactions here.</small>
-      ) : (
-        <form onSubmit={(e) => void save(e)} noValidate>
-          <strong>{editing ? 'Edit transaction' : transfer ? 'New transfer' : 'New transaction'}</strong>
-          <label>
-            Type
-            <select value={form.type} onChange={set('type')} disabled={busy}>
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-              <option value="transfer">Transfer</option>
-            </select>
-          </label>
-          <label>
-            Amount (₱)
-            <input inputMode="decimal" value={form.amount} placeholder="0.00" onChange={set('amount')} disabled={busy} />
-          </label>
-          <label>
-            {transfer ? 'From Account' : 'Account'}
-            <select value={form.accountId} onChange={set('accountId')} disabled={busy}>
-              <option value="">Choose…</option>
-              {accountOptions(form.destinationAccountId)}
-            </select>
-          </label>
-          {transfer && (
-            <label>
-              To Account
-              <select value={form.destinationAccountId} onChange={set('destinationAccountId')} disabled={busy}>
-                <option value="">Choose…</option>
-                {accountOptions(form.accountId)}
-              </select>
-            </label>
-          )}
-          {form.type === 'expense' && (
-            <label>
-              Category
-              <select value={form.categoryId} onChange={set('categoryId')} disabled={busy}>
-                <option value="">Choose…</option>
-                {groups.map((g) =>
-                  g.children.length === 0 ? (
-                    <option key={g.category.id} value={g.category.id}>{g.category.name}</option>
-                  ) : (
-                    <optgroup key={g.category.id} label={g.category.name}>
-                      <option value={g.category.id}>{g.category.name} (general)</option>
-                      {g.children.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </optgroup>
-                  ),
+    <>
+      <PageHeader
+        title="Transactions"
+        actions={accounts.length > 0 ? <Button onClick={() => { setFormError(null); setFormOpen(true) }}>+ Add</Button> : undefined}
+      />
+      {loadError && <State kind="error">{loadError}</State>}
+      {stale && <p role="status" className="note">{staleNote(checking)}</p>}
+      {notice && <p role="status" className="note info">{notice}</p>}
+      {!shown && !loadError && <State kind="loading">Loading transactions…</State>}
+      {shown?.length === 0 && <State kind="empty">No transactions yet.</State>}
+      {days.map((day, i) => (
+        <section key={`${day.date}-${i}`} className="tx-day">
+          <h2 className="tx-date">{day.date}</h2>
+          <ul className="tx-list">
+            {day.rows.map((t) => (
+              <li key={t.id} className={`card tx${t.sync ? ' pending' : ''}`}>
+                <div className="tx-top">
+                  <Badge tone={typeTone(t)}>{typeLabel(t)}</Badge>
+                  <strong className="tx-amount"><Money minor={t.amount_minor} prefix={typeSign(t)} /></strong>
+                </div>
+                {t.type === 'transfer' ? (
+                  <small>↔ {accountName(t.account_id)} → {accountName(t.destination_account_id ?? '')}</small>
+                ) : (
+                  <small>{accountName(t.account_id)} · {categoryName(t.category_id)} · Paid by: {paidBy(t)}</small>
                 )}
+                {t.note && <small>{t.note}</small>}
+                {t.sync && (() => {
+                  const d = describeSync(t.sync, (items.find((i) => i.id === t.id)?.attempt_count ?? 0) > 0)
+                  return (
+                    <>
+                      <small role="status" className={d.tone === 'error' ? 'error' : d.tone === 'warn' ? 'warn' : undefined}>{d.text}</small>
+                      {(t.sync === 'CONFLICT' || t.sync === 'BLOCKED') && (
+                        <div className="actions">
+                          <Button variant="secondary" onClick={() => void discardItem(t.id).then(() => load())}>{t.sync === 'CONFLICT' ? 'Keep server version' : 'Dismiss'}</Button>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+                {(!t.sync || syncEditable(t)) && offlineEditable(t) && (
+                  <div className="actions">
+                    <Button variant="secondary" onClick={() => startEdit(t)}>Edit</Button>
+                    {confirmDelete === t.id ? (
+                      <>
+                        <Button variant="danger" onClick={() => void remove(t)}>Confirm delete</Button>
+                        <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+                      </>
+                    ) : (
+                      <Button variant="ghost" className="text-danger" onClick={() => setConfirmDelete(t.id)}>Delete</Button>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {accounts.length === 0 ? (
+        txs && <State kind="empty">Add an account first (owner), then record transactions here.</State>
+      ) : (
+        <Dialog open={formOpen} onClose={closeForm} dismissible={!busy} title={editing ? 'Edit transaction' : transfer ? 'New transfer' : 'New transaction'}>
+          <form onSubmit={(e) => void save(e)} noValidate>
+            <Field label="Type">
+              <select value={form.type} onChange={set('type')} disabled={busy}>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+                <option value="transfer">Transfer</option>
               </select>
-            </label>
-          )}
-          <label>
-            Transaction Date
-            <input type="date" value={form.date} onChange={set('date')} disabled={busy} />
-          </label>
-          <label>Note (optional)<input value={form.note} maxLength={500} onChange={set('note')} disabled={busy} /></label>
-          {!transfer && <small>Paid by: Me</small>}
-          {formError && <p role="alert" className="error">{formError}</p>}
-          <button type="submit" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save Changes' : transfer ? 'Add Transfer' : 'Add Transaction'}</button>
-          {editing && <button type="button" className="link" onClick={cancelEdit} disabled={busy}>Cancel</button>}
-        </form>
+            </Field>
+            <Field label="Amount (₱)">
+              <input inputMode="decimal" value={form.amount} placeholder="0.00" onChange={set('amount')} disabled={busy} />
+            </Field>
+            <Field label={transfer ? 'From Account' : 'Account'}>
+              <select value={form.accountId} onChange={set('accountId')} disabled={busy}>
+                <option value="">Choose…</option>
+                {accountOptions(form.destinationAccountId)}
+              </select>
+            </Field>
+            {transfer && (
+              <Field label="To Account">
+                <select value={form.destinationAccountId} onChange={set('destinationAccountId')} disabled={busy}>
+                  <option value="">Choose…</option>
+                  {accountOptions(form.accountId)}
+                </select>
+              </Field>
+            )}
+            {form.type === 'expense' && (
+              <Field label="Category">
+                <select value={form.categoryId} onChange={set('categoryId')} disabled={busy}>
+                  <option value="">Choose…</option>
+                  {groups.map((g) =>
+                    g.children.length === 0 ? (
+                      <option key={g.category.id} value={g.category.id}>{g.category.name}</option>
+                    ) : (
+                      <optgroup key={g.category.id} label={g.category.name}>
+                        <option value={g.category.id}>{g.category.name} (general)</option>
+                        {g.children.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </optgroup>
+                    ),
+                  )}
+                </select>
+              </Field>
+            )}
+            <Field label="Transaction Date">
+              <input type="date" value={form.date} onChange={set('date')} disabled={busy} />
+            </Field>
+            <Field label="Note (optional)"><input value={form.note} maxLength={500} onChange={set('note')} disabled={busy} /></Field>
+            {!transfer && <small>Paid by: Me</small>}
+            {formError && <p role="alert" className="error">{formError}</p>}
+            <Button type="submit" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save Changes' : transfer ? 'Add Transfer' : 'Add Transaction'}</Button>
+          </form>
+        </Dialog>
       )}
-    </section>
+    </>
   )
 }

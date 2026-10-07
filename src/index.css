@@ -145,3 +145,14 @@ button.link { padding: var(--s-2) var(--s-1); background: none; color: var(--c-b
 .pill.warn { color: var(--c-caution); }
 .pill.error { color: var(--c-over); }
 [aria-current="page"] { font-weight: 700; }
+
+/* Transactions */
+.note.info { color: var(--c-info); background: var(--c-info-soft); }
+.tx-day { display: grid; gap: var(--s-2); }
+.tx-date { font-size: var(--t-sm); font-weight: 600; color: var(--c-muted); }
+.tx-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.tx { display: grid; gap: var(--s-2); padding: var(--s-3) var(--s-4); overflow-wrap: anywhere; }
+.tx.pending { border-style: dashed; }
+.tx-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.tx-amount { font-size: var(--t-lg); text-align: right; }
+.btn.text-danger { color: var(--c-over); }

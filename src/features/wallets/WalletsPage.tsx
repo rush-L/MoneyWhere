@@ -71,7 +71,7 @@ export function WalletsPage({ userId }: { userId: string }) {
     // Presentation only: exactly one section is mounted at a time, so switching tabs remounts and reloads it like before.
     const { wallet } = selected
     const section =
-      selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} onBack={back} />
+      selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} />
       : selected.page === 'budgets' ? <BudgetsPage wallet={wallet} userId={userId} onBack={back} />
       : selected.page === 'accounts' ? <AccountsPage wallet={wallet} userId={userId} onBack={back} />
       : <CategoriesPage wallet={wallet} userId={userId} onBack={back} />
