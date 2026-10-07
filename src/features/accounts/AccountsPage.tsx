@@ -9,10 +9,17 @@ import { createTransactionService } from '../transactions/transactionService'
 import type { Wallet } from '../wallets/wallet'
 import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABELS, parseNewAccount, type Account } from './account'
 import { createAccountService } from './accountService'
+import { Badge } from '../../ui/Badge'
+import { Button } from '../../ui/Button'
+import { Dialog } from '../../ui/Dialog'
+import { Field } from '../../ui/Field'
+import { Money } from '../../ui/Money'
+import { PageHeader } from '../../ui/PageHeader'
+import { State } from '../../ui/State'
 
 const EMPTY = { name: '', type: 'cash', openingBalance: '', holder: '' }
 
-export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userId: string; onBack: () => void }) {
+export function AccountsPage({ wallet, userId }: { wallet: Wallet; userId: string }) {
   const service = useMemo(() => (supabase ? createAccountService(supabase) : null), [])
   const txService = useMemo(() => (supabase ? createTransactionService(supabase) : null), [])
   const { items, syncedTick, cache } = useOffline()
@@ -32,6 +39,7 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [creating, setCreating] = useState(false) // true while saving (create or edit)
   const [formError, setFormError] = useState<string | null>(null)
+  const [formOpen, setFormOpen] = useState(false) // dialog visibility only; the form state above stays on this page
   const isOwner = wallet.role === 'owner' // UX only; RLS enforces it
 
   const load = useCallback(
@@ -73,6 +81,7 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
       else await service!.create(wallet.id, parsed.value)
       setEditing(null)
       setForm(EMPTY)
+      setFormOpen(false)
       await load()
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Could not save the account.')
@@ -84,12 +93,19 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
   function startEdit(a: Account) {
     setEditing(a)
     setFormError(null)
+    setFormOpen(true)
     setForm({ name: a.name, type: a.type, openingBalance: formatMinor(a.openingBalanceMinor), holder: a.holder ?? '' })
   }
   function cancelEdit() {
     setEditing(null)
     setFormError(null)
     setForm(EMPTY)
+    setFormOpen(false)
+  }
+  // Closing the dialog cancels an edit (as Cancel did); a half-typed new account is kept, as the inline form kept it.
+  function closeForm() {
+    if (editing) cancelEdit()
+    else setFormOpen(false)
   }
   async function remove(a: Account) {
     setConfirmDelete(null)
@@ -106,64 +122,71 @@ export function AccountsPage({ wallet, userId, onBack }: { wallet: Wallet; userI
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
 
   return (
-    <section className="card">
-      <button type="button" className="link" onClick={onBack}>← Wallets</button>
-      <h2>{wallet.name} · Accounts</h2>
-      {loadError && <p role="alert" className="error">{loadError}</p>}
-      {stale && <p role="status"><small>{staleNote(checking)}</small></p>}
-      {!accounts && !loadError && <p role="status">Loading accounts…</p>}
-      {accounts?.length === 0 && <p>No accounts yet.{isOwner ? ' Create your first one below.' : ''}</p>}
+    <>
+      <PageHeader
+        title="Accounts"
+        actions={isOwner ? <Button onClick={() => { setFormError(null); setFormOpen(true) }}>+ Add account</Button> : undefined}
+      />
+      {loadError && <State kind="error">{loadError}</State>}
+      {stale && <p role="status" className="note">{staleNote(checking)}</p>}
+      {!accounts && !loadError && <State kind="loading">Loading accounts…</State>}
+      {accounts?.length === 0 && <State kind="empty">No accounts yet.{isOwner ? ' Use + Add account to create your first one.' : ''}</State>}
       {accounts && accounts.length > 0 && (
-        <ul className="list">
+        <ul className="account-list">
           {accounts.map((a) => (
-            <li key={a.id}>
-              <strong>{a.name}</strong>{' '}
-              <small>{ACCOUNT_TYPE_LABELS[a.type]}{a.holder ? ` · Holder: ${a.holder}` : ''}</small>
-              <br />
-              <small>Opening ₱{formatMinor(a.openingBalanceMinor)} · Current ₱{formatMinor(a.currentBalanceMinor)}</small>
+            <li key={a.id} className="card account">
+              <div className="account-top">
+                <strong>{a.name}</strong>
+                <Badge>{ACCOUNT_TYPE_LABELS[a.type]}</Badge>
+              </div>
+              {a.holder && <small>Holder: {a.holder}</small>}
+              <div className="account-balance">
+                <small>Current balance</small>
+                <b><Money minor={a.currentBalanceMinor} /></b>
+              </div>
+              <small>Opening balance <Money minor={a.openingBalanceMinor} /></small>
+              {a.hasTransactions && <Badge tone="info">Has transactions</Badge>}
+              {isOwner && a.hasTransactions && <small>Its type and opening balance are locked, and it can't be deleted.</small>}
               {isOwner && (
-                <>
-                  <br />
-                  <button type="button" className="link" onClick={() => startEdit(a)}>Edit</button>
+                <div className="actions">
+                  <Button variant="secondary" onClick={() => startEdit(a)}>Edit</Button>
                   {!a.hasTransactions &&
                     (confirmDelete === a.id ? (
                       <>
-                        {' '}<button type="button" className="link" onClick={() => void remove(a)}>Confirm delete</button>
-                        {' '}<button type="button" className="link" onClick={() => setConfirmDelete(null)}>Cancel</button>
+                        <Button variant="danger" onClick={() => void remove(a)}>Confirm delete</Button>
+                        <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
                       </>
                     ) : (
-                      <>{' '}<button type="button" className="link" onClick={() => setConfirmDelete(a.id)}>Delete</button></>
+                      <Button variant="ghost" className="text-danger" onClick={() => setConfirmDelete(a.id)}>Delete</Button>
                     ))}
-                </>
+                </div>
               )}
             </li>
           ))}
         </ul>
       )}
       {isOwner ? (
-        <form onSubmit={(e) => void save(e)} noValidate>
-          <strong>{editing ? `Edit ${editing.name}` : 'New account'}</strong>
-          <label>Account name<input value={form.name} maxLength={50} onChange={set('name')} disabled={creating} /></label>
-          <label>
-            Type
-            <select value={form.type} onChange={set('type')} disabled={creating || locked}>
-              {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
-            </select>
-          </label>
-          <label>
-            Opening balance (₱)
-            <input inputMode="decimal" value={form.openingBalance} placeholder="0.00" onChange={set('openingBalance')} disabled={creating || locked} />
-          </label>
-          <label>Holder (optional)<input value={form.holder} maxLength={50} onChange={set('holder')} disabled={creating} /></label>
-          <small>Currency: {wallet.currency} (same as the wallet)</small>
-          {locked && <small>This account has transactions, so only its name and holder can change.</small>}
-          {formError && <p role="alert" className="error">{formError}</p>}
-          <button type="submit" disabled={creating}>{creating ? 'Saving…' : editing ? 'Save Changes' : 'Create Account'}</button>
-          {editing && <button type="button" className="link" onClick={cancelEdit} disabled={creating}>Cancel</button>}
-        </form>
+        <Dialog open={formOpen} onClose={closeForm} dismissible={!creating} title={editing ? `Edit ${editing.name}` : 'New account'}>
+          <form onSubmit={(e) => void save(e)} noValidate>
+            <Field label="Account name"><input value={form.name} maxLength={50} onChange={set('name')} disabled={creating} /></Field>
+            <Field label="Type" hint={locked ? 'Locked: this account has transactions.' : undefined}>
+              <select value={form.type} onChange={set('type')} disabled={creating || locked}>
+                {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
+              </select>
+            </Field>
+            <Field label="Opening balance (₱)" hint={locked ? 'Locked: this account has transactions.' : undefined}>
+              <input inputMode="decimal" value={form.openingBalance} placeholder="0.00" onChange={set('openingBalance')} disabled={creating || locked} />
+            </Field>
+            <Field label="Holder (optional)"><input value={form.holder} maxLength={50} onChange={set('holder')} disabled={creating} /></Field>
+            <small>Currency: {wallet.currency} (same as the wallet)</small>
+            {locked && <small>This account has transactions, so only its name and holder can change.</small>}
+            {formError && <p role="alert" className="error">{formError}</p>}
+            <Button type="submit" disabled={creating}>{creating ? 'Saving…' : editing ? 'Save Changes' : 'Create Account'}</Button>
+          </form>
+        </Dialog>
       ) : (
-        <small>Only the wallet owner can add accounts.</small>
+        <p className="note info">Only the wallet owner can add accounts.</p>
       )}
-    </section>
+    </>
   )
 }
