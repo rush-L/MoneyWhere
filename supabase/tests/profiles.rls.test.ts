@@ -108,6 +108,24 @@ describe('profiles', () => {
     expect(r.rows.map((x) => x.avatar_url)).toEqual(['https://lh3.test/a.png', 'https://i.test/b.png', null, null])
   })
 
+  it('signup normalises an over-long or blank provider name instead of failing, and leaves valid names alone', async () => {
+    const long = 'Maria '.repeat(20) // 120 characters, trims to 119
+    const cases: [string, Record<string, unknown>, string | null][] = [
+      ['77777777-7777-4777-8777-777777777771', { name: long }, long.trim().slice(0, 50)],
+      ['77777777-7777-4777-8777-777777777772', { display_name: 'y'.repeat(50) }, 'y'.repeat(50)],
+      ['77777777-7777-4777-8777-777777777773', { display_name: 'z'.repeat(51) }, 'z'.repeat(50)],
+      ['77777777-7777-4777-8777-777777777774', { name: '   ' }, null],
+      ['77777777-7777-4777-8777-777777777775', { name: '' }, null],
+      ['77777777-7777-4777-8777-777777777776', {}, null],
+      ['77777777-7777-4777-8777-777777777777', { name: ' Ana Reyes ' }, ' Ana Reyes '], // within the limit: stored exactly as before
+      ['77777777-7777-4777-8777-777777777778', { display_name: 'Display', name: 'Other' }, 'Display'], // display_name still wins over name
+    ]
+    for (const [i, [id, meta]] of cases.entries()) await db.query('insert into auth.users values ($1, $2, $3)', [id, `n${i}@x.test`, JSON.stringify(meta)])
+    const r = await db.query<{ id: string; display_name: string | null }>('select id, display_name from public.profiles where id = any($1) order by id', [cases.map((c) => c[0])])
+    expect(r.rows.map((x) => x.display_name)).toEqual(cases.map((c) => c[2]))
+    expect(cases[0]![2]!.length).toBeLessThanOrEqual(50)
+  })
+
   it('rejects unsafe avatar URLs and over-long names', async () => {
     await expect(as(A, () => db.query(`update public.profiles set avatar_url = 'javascript:alert(1)' where id = $1`, [A]))).rejects.toThrow(/avatar_url_https/)
     await expect(as(A, () => db.query(`update public.profiles set display_name = $2 where id = $1`, [A, 'x'.repeat(51)]))).rejects.toThrow(/display_name_len/)
