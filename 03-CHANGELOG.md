@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## UI redesign, Phase B — existing screen migration (in progress)
+
+Presentation only; no change to financial logic, services, RLS, offline or sync behaviour.
+
+### Gate 1 — Wallets (2026-10-07)
+- **Wallet list:** `PageHeader`, one card per wallet with name, currency and role badges (text, not colour alone) and a primary **Open** button; loading, error and empty use `State` with the existing wording; the create form uses `Section`, `Field` and `Button` with the same validation and messages.
+- **Navigation:** the four per-wallet text links are replaced by **Open**, which goes to Transactions (what the first link did). Accounts, Categories and Budgets are one tab away; there is no longer a direct shortcut to them from the list. The opened wallet shows a shell header (wallet name, "← Wallets") above the Phase A tabs; one section is still mounted at a time. Until each section page is migrated, a CSS rule hides that page's own "← Wallets" link and heading so the header is not duplicated.
+- **Not added:** wallet edit, delete, archive or retry on a failed wallet load (none existed). Wallet `mode` is not shown (single internal value, not user-facing today).
+- **Verified:** TypeScript, lint, 308 tests, build; real signed-in hosted-dev app at 360 / 768 / 1280 with no horizontal overflow and targets of at least 44px; open, tab switching (each switch remounts), back, empty-name validation and creating a wallet. Not verified in the real app: the loading, empty and error states of the list.
+
 ## UI redesign, Phase A — UI foundation & app shell (2026-10-07)
 
 Presentation only. No change to financial formulas, transaction semantics, RLS, mutation RPCs, offline projection, IndexedDB/outbox, Realtime or authorization. No router, UI library or dark mode added. `01-APP-SPEC.md` and `02-ROADMAP.md` unchanged.

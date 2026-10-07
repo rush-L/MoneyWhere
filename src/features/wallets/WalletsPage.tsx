@@ -8,6 +8,12 @@ import { TransactionsPage } from '../transactions/TransactionsPage'
 import { readThrough, walletsKey, type ReadResult } from '../offline/db/cache'
 import { useOffline } from '../offline/hooks/OfflineProvider'
 import { createWalletService } from './walletService'
+import { Badge } from '../../ui/Badge'
+import { Button } from '../../ui/Button'
+import { Field } from '../../ui/Field'
+import { PageHeader } from '../../ui/PageHeader'
+import { Section } from '../../ui/Section'
+import { State } from '../../ui/State'
 
 const SECTIONS = [
   ['transactions', 'Transactions'],
@@ -70,7 +76,8 @@ export function WalletsPage({ userId }: { userId: string }) {
       : selected.page === 'accounts' ? <AccountsPage wallet={wallet} userId={userId} onBack={back} />
       : <CategoriesPage wallet={wallet} userId={userId} onBack={back} />
     return (
-      <>
+      <div className="wallet-shell">
+        <PageHeader title={wallet.name} onBack={back} backLabel="Wallets" />
         <nav className="tabs" aria-label={`${wallet.name} sections`}>
           {SECTIONS.map(([page, label]) => (
             <button key={page} type="button" aria-current={selected.page === page ? 'page' : undefined} onClick={() => selected.page !== page && setSelected({ wallet, page })}>
@@ -79,38 +86,42 @@ export function WalletsPage({ userId }: { userId: string }) {
           ))}
         </nav>
         {section}
-      </>
+      </div>
     )
   }
 
   return (
-    <section className="card">
-      <h2>Wallets</h2>
-      {loadError && <p role="alert" className="error">{loadError}</p>}
-      {!wallets && !loadError && <p role="status">Loading wallets…</p>}
-      {wallets?.length === 0 && <p>No wallets yet. Create your first one below.</p>}
+    <>
+      <PageHeader title="Wallets" />
+      {loadError && <State kind="error">{loadError}</State>}
+      {!wallets && !loadError && <State kind="loading">Loading wallets…</State>}
+      {wallets?.length === 0 && <State kind="empty">No wallets yet. Create your first one below.</State>}
       {wallets && wallets.length > 0 && (
-        <ul className="list">
+        <ul className="wallet-list">
           {wallets.map((w) => (
-            <li key={w.id}>
-              <strong>{w.name}</strong> <small>{w.currency} · {w.role}</small>{' '}
-              <button type="button" className="link" onClick={() => setSelected({ wallet: w, page: 'transactions' })}>Transactions</button>{' '}
-              <button type="button" className="link" onClick={() => setSelected({ wallet: w, page: 'accounts' })}>Accounts</button>{' '}
-              <button type="button" className="link" onClick={() => setSelected({ wallet: w, page: 'categories' })}>Categories</button>{' '}
-              <button type="button" className="link" onClick={() => setSelected({ wallet: w, page: 'budgets' })}>Budgets</button>
+            <li key={w.id} className="card wallet-row">
+              <div className="wallet-id">
+                <strong>{w.name}</strong>
+                <span className="wallet-meta">
+                  <Badge>{w.currency}</Badge>
+                  <Badge tone={w.role === 'owner' ? 'info' : 'neutral'}>{w.role === 'owner' ? 'Owner' : 'Member'}</Badge>
+                </span>
+              </div>
+              <Button onClick={() => setSelected({ wallet: w, page: 'transactions' })} aria-label={`Open ${w.name}`}>Open</Button>
             </li>
           ))}
         </ul>
       )}
-      <form onSubmit={create} noValidate>
-        <label>
-          New wallet name
-          <input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} disabled={creating} />
-        </label>
-        <small>Currency: {DEFAULT_CURRENCY} (one currency per wallet)</small>
-        {formError && <p role="alert" className="error">{formError}</p>}
-        <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create Wallet'}</button>
-      </form>
-    </section>
+      <div className="card">
+        <Section title="New wallet">
+          <form onSubmit={create} noValidate>
+            <Field label="Wallet name" error={formError} hint={`Currency: ${DEFAULT_CURRENCY} (one currency per wallet)`}>
+              <input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} disabled={creating} />
+            </Field>
+            <Button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create Wallet'}</Button>
+          </form>
+        </Section>
+      </div>
+    </>
   )
 }
