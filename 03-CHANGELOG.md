@@ -2,6 +2,17 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Free-tier production strategy: custom domain and SMTP deferred (2026-10-07)
+
+Documentation only. No application code, Supabase (Auth, Site URL, redirect URLs, schema, RLS), Vercel, DNS, SMTP, Google OAuth or environment-variable change; nothing was sent or created.
+
+- **Decision:** stay on free tiers (Vercel Hobby, Supabase Free) with no purchased or configured custom domain. The production origin remains `https://moneywhere-rho.vercel.app`; production Supabase is `zoyauiojqpcglyhxzzkh`, development `sitlhdkfihzmdzxfrliv`.
+- **Email:** keep Supabase's built-in mailer. Confirm email stays on, email/password signup enabled, anonymous sign-ins off, minimum password 8. Email confirmation is not disabled and no weaker flow, signup restriction or code workaround is added.
+- **Reason:** remain on free tiers during development and controlled testing; custom SMTP needs a sender domain we control, which `vercel.app` cannot provide.
+- **Current limitation:** the built-in mailer is rate-limited and only delivers to addresses Supabase permits, so it is fit for development, internal testing and controlled testers, not for general-public email delivery. Public sign-ups and password recovery for arbitrary users are not production-ready until SMTP exists. Already verified on production and not repeated: load, signup, confirmation email and redirect, sign-in/out, session persistence, password validation. Production recovery email remains untested.
+- **Future path:** register a domain and add it to Vercel; move Site URL, redirect URLs and `VITE_AUTH_REDIRECT_URL`; configure custom SMTP (SPF, DKIM, DMARC) in the Supabase dashboard; re-test production signup confirmation and password recovery. Also deferred: Google OAuth, and reassessing Vercel Pro (Hobby is non-commercial use) and the Supabase plan.
+- **Spec:** `01-APP-SPEC.md` is unchanged; this is a deployment decision, not a product-requirement change.
+
 ## Password recovery (2026-10-07)
 
 Application code and tests only. No Supabase, Vercel, environment-variable, migration, Site URL/redirect or SMTP change; nothing was sent or created in any project.
