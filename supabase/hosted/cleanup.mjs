@@ -1,23 +1,24 @@
-/* global process, console, URL */
+/* global process, console */
 // Sweeps leftover hosted-test data (users + their wallets) from the DEV project. Dry-run by default.
 //   node supabase/hosted/cleanup.mjs --project-ref=<ref>            list only
 //   node supabase/hosted/cleanup.mjs --project-ref=<ref> --apply    delete what the list showed
-// Safety: --project-ref must equal BOTH the linked project (supabase/.temp/project-ref) and the host in
-// .env.local, so it cannot touch a project you did not name. Matching is strict: only e-mails of the form the
+// Safety (guard.mjs, fails closed): the project in .env.local, the linked project (supabase/.temp/project-ref) and
+// the approved development list must all agree, and --project-ref must name that same project. Production is never
+// accepted; this script is not for production. Matching is strict: only e-mails of the form the
 // hosted suites generate (reambillo.russel+mw<letters><13-digit timestamp><suffix>@gmail.com). A wallet is deleted
 // only if EVERY member is a matched test user; a user who belongs to any other wallet is kept. Nothing else is touched.
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { assertDevProject } from './guard.mjs'
 
+const target = assertDevProject() // throws unless .env.local, the linked project and the approved dev list all agree
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.split('=')[1]
 const apply = process.argv.includes('--apply')
 const ref = arg('project-ref')
-const linked = readFileSync('supabase/.temp/project-ref', 'utf8').trim()
-const envUrl = /^VITE_SUPABASE_URL=(.*)$/m.exec(readFileSync('.env.local', 'utf8'))?.[1]?.trim() ?? ''
-if (!ref || ref !== linked || new URL(envUrl).hostname.split('.')[0] !== ref) {
-  console.error(`Refusing: --project-ref must match the linked project and .env.local (linked=${linked}).`)
+if (!ref || ref !== target) {
+  console.error(`Refusing: --project-ref must be the approved development project (${target}).`)
   process.exit(1)
 }
 

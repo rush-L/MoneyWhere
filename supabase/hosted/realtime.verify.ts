@@ -12,6 +12,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { subscribeWalletChanges } from '../../src/features/offline/realtime/walletChanges'
 import type { NewTransaction } from '../../src/features/transactions/transaction'
 import { createTransactionService } from '../../src/features/transactions/transactionService'
+import { assertDevProject } from './guard.mjs'
+
+assertDevProject() // refuses unless .env.local, the linked project and the approved dev list agree
 
 const env = Object.fromEntries(
   readFileSync('.env.local', 'utf8').split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]),

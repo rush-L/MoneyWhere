@@ -19,6 +19,9 @@ import { sendItem } from '../../src/features/offline/sync/sendItem'
 import { syncOutbox } from '../../src/features/offline/sync/syncEngine'
 import type { NewTransaction } from '../../src/features/transactions/transaction'
 import { createTransactionService } from '../../src/features/transactions/transactionService'
+import { assertDevProject } from './guard.mjs'
+
+assertDevProject() // refuses unless .env.local, the linked project and the approved dev list agree
 
 const env = Object.fromEntries(
   readFileSync('.env.local', 'utf8')
