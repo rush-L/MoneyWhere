@@ -136,6 +136,36 @@ describe('accounts', () => {
     await addAccount(A, WA, { id })
     await expect(addAccount(A, WA, { id })).rejects.toThrow(/duplicate/)
   })
+  it('account_has_transactions is not callable by anon or PUBLIC; authenticated keeps execute', async () => {
+    const fn = `'public.account_has_transactions(uuid)'`
+    const priv = await db.query<{ anon: boolean; auth: boolean; public_acl: boolean }>(
+      `select has_function_privilege('anon', ${fn}, 'execute') as anon,
+              has_function_privilege('authenticated', ${fn}, 'execute') as auth,
+              exists (select 1 from pg_proc p, aclexplode(p.proacl) a where p.oid = ${fn}::regprocedure and a.grantee = 0) as public_acl`)
+    expect(priv.rows[0]).toEqual({ anon: false, auth: true, public_acl: false })
+    // anon cannot call it, with or without a real account id
+    const a = (await addAccount(A, WA, { name: 'Probe' })).rows[0]!
+    for (const id of [a.id, randomUUID()]) {
+      await expect(as(null, () => db.query(`select public.account_has_transactions($1)`, [id]))).rejects.toThrow(/permission denied for function/)
+    }
+    // a signed-in user still can (the policy and trigger below run as the caller); the function itself is unchanged
+    const r = await as(B, () => db.query<{ r: boolean }>(`select public.account_has_transactions($1) as r`, [a.id]))
+    expect(r.rows[0]!.r).toBe(false)
+  })
+  it('the delete policy and history trigger really do need authenticated execute (negative control)', async () => {
+    const a = (await addAccount(A, WA, { name: 'Control' })).rows[0]!
+    await db.exec(`revoke execute on function public.account_has_transactions(uuid) from authenticated`)
+    try {
+      await expect(as(A, () => db.query(`delete from public.accounts where id = $1`, [a.id]))).rejects.toThrow(/permission denied for function/)
+      await expect(as(A, () => db.query(`update public.accounts set type = 'bank' where id = $1`, [a.id]))).rejects.toThrow(/permission denied for function/)
+    } finally {
+      await db.exec(`grant execute on function public.account_has_transactions(uuid) to authenticated`)
+    }
+    // restored: the owner path works again, a member still cannot delete
+    expect((await as(B, () => db.query(`delete from public.accounts where id = $1`, [a.id]))).affectedRows).toBe(0)
+    expect((await as(A, () => db.query(`update public.accounts set type = 'bank' where id = $1`, [a.id]))).affectedRows).toBe(1)
+    expect((await as(A, () => db.query(`delete from public.accounts where id = $1`, [a.id]))).affectedRows).toBe(1)
+  })
   it('deleting the wallet removes its accounts', async () => {
     const w = await createWallet(A, 'Temp')
     await addAccount(A, w)
