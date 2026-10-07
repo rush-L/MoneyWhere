@@ -74,6 +74,17 @@ main.card { max-width: 420px; margin: var(--s-4) auto; } /* AuthScreen, until it
 .tabs button { min-height: var(--tap); padding: 0 var(--s-2); background: none; color: var(--c-muted); font-size: var(--t-sm); border-radius: var(--r-1); }
 .tabs button[aria-current="page"] { background: var(--c-surface); color: var(--c-brand); font-weight: 700; box-shadow: var(--shadow-1); }
 
+/* Dashboard */
+.note { margin: 0; padding: var(--s-2) var(--s-3); font-size: var(--t-sm); color: var(--c-caution); background: var(--c-caution-soft); border-radius: var(--r-1); }
+.hero { display: grid; gap: var(--s-1); justify-items: start; }
+.hero-label { font-size: var(--t-sm); color: var(--c-muted); }
+.hero-figure { font-size: var(--t-2xl); line-height: 1.1; }
+.hero-figure.over { color: var(--c-over); }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+.attention { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-4); }
+.attention li { display: grid; gap: var(--s-2); }
+.attention-head { display: flex; justify-content: space-between; gap: var(--s-2); }
+
 /* Wallet list rows */
 .wallet-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
 .wallet-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); }

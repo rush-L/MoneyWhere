@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { formatMinor } from '../../domain/finance'
 import { supabase } from '../../lib/supabase'
 import { BudgetsPage } from '../budgets/BudgetsPage'
 import { currentMonth, monthLabel } from '../budgets/budget'
@@ -11,6 +10,14 @@ import { createWalletService } from '../wallets/walletService'
 import type { Wallet } from '../wallets/wallet'
 import { pickWallet, type DashboardInputs } from './dashboard'
 import { createDashboardServiceFor } from './dashboardService'
+import { Badge } from '../../ui/Badge'
+import { Button } from '../../ui/Button'
+import { Field } from '../../ui/Field'
+import { Meter } from '../../ui/Meter'
+import { Money } from '../../ui/Money'
+import { PageHeader } from '../../ui/PageHeader'
+import { Section } from '../../ui/Section'
+import { State } from '../../ui/State'
 
 const KEY = 'moneywhere.dashboardWallet'
 const saved = () => {
@@ -28,7 +35,6 @@ const remember = (id: string) => {
   }
 }
 
-const peso = (n: number) => `${n < 0 ? '-' : ''}₱${formatMinor(Math.abs(n))}`
 const NOT_OFFLINE = "Your summary isn't saved on this device yet. Connect to the internet to load it."
 const LOAD_FAILED = "We couldn't load your financial summary. Please try again."
 
@@ -52,26 +58,25 @@ export function DashboardPage({ userId }: { userId: string }) {
     void load()
   }, [load])
 
-  if (error) return <section className="card"><p role="alert" className="error">{online ? LOAD_FAILED : NOT_OFFLINE}</p><button type="button" onClick={load}>Retry</button></section>
-  if (!wallets) return <section className="card"><p role="status">Loading…</p></section>
+  if (error) return <State kind="error" action={<Button onClick={load}>Retry</Button>}>{online ? LOAD_FAILED : NOT_OFFLINE}</State>
+  if (!wallets) return <State kind="loading">Loading…</State>
   const wallet = pickWallet(wallets, walletId)
-  if (!wallet) return <section className="card"><h2>Dashboard</h2><p>No wallets yet.<br />Create a wallet to get started.</p></section>
+  if (!wallet) return <><PageHeader title="Dashboard" /><State kind="empty">No wallets yet.<br />Create a wallet to get started.</State></>
   // Remounting DashboardView on return reloads it, so edits made in Budgets show up.
   if (budgetsOpen) return <BudgetsPage wallet={wallet} userId={userId} onBack={() => setBudgetsOpen(false)} />
 
   return (
-    <section className="card">
-      <h2>Dashboard</h2>
+    <>
+      <PageHeader title="Dashboard" />
       {wallets.length > 1 && (
-        <label>
-          Wallet
+        <Field label="Wallet">
           <select value={wallet.id} onChange={(e) => { setWalletId(e.target.value); remember(e.target.value) }}>
             {wallets.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
-        </label>
+        </Field>
       )}
       <DashboardView key={wallet.id} wallet={wallet} userId={userId} onBudgets={() => setBudgetsOpen(true)} />
-    </section>
+    </>
   )
 }
 
@@ -106,41 +111,52 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
   const data = useMemo(() => (snap ? projectDashboard(snap, items, wallet.id) : null), [snap, items, wallet.id])
   const retry = () => { setSnap(null); setError(null); void load() }
 
-  if (error) return <><p role="alert" className="error">{online ? error : NOT_OFFLINE}</p><button type="button" onClick={retry}>Retry</button></>
-  if (!data) return <p role="status" aria-busy="true">Loading your summary…</p>
+  if (error) return <State kind="error" action={<Button onClick={retry}>Retry</Button>}>{online ? error : NOT_OFFLINE}</State>
+  if (!data) return <State kind="loading">Loading your summary…</State>
 
   const over = data.totalRemaining < 0
   return (
-    <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
-      <strong>{monthLabel(month)}</strong>
-      {stale && <p role="status"><small>{staleNote(checking)}</small></p>}
-      <div className="stat">
-        <small>Total Balance</small>
-        {data.accountCount === 0 ? <span>No accounts yet.<br />Add an account to start tracking your money.</span> : <b>{peso(data.totalBalance)}</b>}
+    <>
+      {stale && <p role="status" className="note">{staleNote(checking)}</p>}
+      <div className="card">
+        <Section title={monthLabel(month)}>
+          <div className="hero">
+            <span className="hero-label">Remaining</span>
+            <b className={`hero-figure${over ? ' over' : ''}`}><Money minor={data.totalRemaining} /></b>
+            {over && <Badge tone="over">Over budget by <Money minor={-data.totalRemaining} /></Badge>}
+          </div>
+          <div className="stat-grid">
+            <div className="stat"><small>Budgeted</small><b><Money minor={data.totalBudgeted} /></b></div>
+            <div className="stat"><small>Spent</small><b><Money minor={data.totalSpent} /></b></div>
+          </div>
+        </Section>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div className="stat"><small>Budgeted</small><b>{peso(data.totalBudgeted)}</b></div>
-        <div className="stat"><small>Spent</small><b>{peso(data.totalSpent)}</b></div>
+      <div className="card">
+        <Section title="Balance">
+          <div className="stat">
+            <small>Total Balance</small>
+            {data.accountCount === 0 ? <span>No accounts yet.<br />Add an account to start tracking your money.</span> : <b><Money minor={data.totalBalance} /></b>}
+          </div>
+        </Section>
       </div>
-      <div className="stat">
-        <small>Remaining</small>
-        <b className={over ? 'error' : undefined}>{peso(data.totalRemaining)}</b>
-        {over && <small className="error">Over budget by {peso(-data.totalRemaining)}</small>}
+      <div className="card">
+        <Section title="Needs Attention">
+          {data.budgetCount === 0 ? (
+            <State kind="empty" action={<Button variant="secondary" onClick={onBudgets}>Go to Budgets</Button>}>No budgets for this month.</State>
+          ) : (
+            <ul className="attention">
+              {data.attention.map((l) => (
+                <li key={l.categoryId}>
+                  <div className="attention-head"><strong>{l.name}</strong><span>{Math.round(l.percentUsed)}%</span></div>
+                  <Meter percent={l.percentUsed} over={l.over} label={`${l.name} budget used`} />
+                  <div><Money minor={l.spent} /> / <Money minor={l.budget} /></div>
+                  {l.over ? <span role="alert" className="error">⚠ Over budget by <Money minor={-l.remaining} /></span> : <small><Money minor={l.remaining} /> remaining</small>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
       </div>
-      <h3 style={{ margin: 0 }}>Needs Attention</h3>
-      {data.budgetCount === 0 ? (
-        <p style={{ margin: 0 }}>No budgets for this month. <button type="button" className="link" onClick={onBudgets}>Go to Budgets</button></p>
-      ) : (
-        <ul className="list" style={{ margin: 0 }}>
-          {data.attention.map((l) => (
-            <li key={l.categoryId}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><strong>{l.name}</strong><span>{Math.round(l.percentUsed)}%</span></div>
-              <div>{peso(l.spent)} / {peso(l.budget)}</div>
-              {l.over ? <span role="alert" className="error">⚠ Over budget by {peso(-l.remaining)}</span> : <small>{peso(l.remaining)} remaining</small>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    </>
   )
 }

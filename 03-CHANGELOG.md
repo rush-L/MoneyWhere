@@ -6,11 +6,18 @@ Newest first. Records implemented changes and architectural decisions.
 
 Presentation only; no change to financial logic, services, RLS, offline or sync behaviour.
 
-### Gate 1 — Wallets (2026-10-07)
+### Gate 1 — Wallets (2026-10-07, commit `5903f3d`)
 - **Wallet list:** `PageHeader`, one card per wallet with name, currency and role badges (text, not colour alone) and a primary **Open** button; loading, error and empty use `State` with the existing wording; the create form uses `Section`, `Field` and `Button` with the same validation and messages.
 - **Navigation:** the four per-wallet text links are replaced by **Open**, which goes to Transactions (what the first link did). Accounts, Categories and Budgets are one tab away; there is no longer a direct shortcut to them from the list. The opened wallet shows a shell header (wallet name, "← Wallets") above the Phase A tabs; one section is still mounted at a time. Until each section page is migrated, a CSS rule hides that page's own "← Wallets" link and heading so the header is not duplicated.
 - **Not added:** wallet edit, delete, archive or retry on a failed wallet load (none existed). Wallet `mode` is not shown (single internal value, not user-facing today).
 - **Verified:** TypeScript, lint, 308 tests, build; real signed-in hosted-dev app at 360 / 768 / 1280 with no horizontal overflow and targets of at least 44px; open, tab switching (each switch remounts), back, empty-name validation and creating a wallet. Not verified in the real app: the loading, empty and error states of the list.
+
+### Gate 2 — Dashboard (2026-10-07)
+- **UI:** `PageHeader`; wallet selector as a `Field`; three cards (month budget, balance, Needs Attention) built with `Section`. **Remaining** is the hero figure with an explicit "Over budget by ₱X" badge when negative; Budgeted and Spent sit under it; Total Balance is in its own "Balance" card so it is not read as the remaining budget. Needs Attention rows use `Meter` (fed `percentUsed` and `over` from the finance domain) plus the unchanged rounded percentage, spent / budget, and "⚠ Over budget by" or "remaining" text. Loading, error (with the existing Retry), the no-wallets message and the no-budgets message ("Go to Budgets") use `State` with the existing wording; the stale note keeps its text in a muted notice.
+- **Money:** every amount now renders through `Money` (domain `formatMinor`); the local `peso` helper is gone. No arithmetic added; all values come from `buildDashboard` / `projectDashboard` as before.
+- **Preserved:** wallet selection and its remembered choice, current-month scope, snapshot-first / stale-while-revalidate loading, offline messaging, remount on return from Budgets, App shell and wallet tabs.
+- **Verified:** TypeScript, lint, 308 tests, build; real signed-in hosted-dev app at 360 / 768 / 1280 (no horizontal overflow, targets of at least 44px, last content clears the bottom nav at 360, content 720 / 880px wide); values matched the test data (Remaining -₱50.50, Budgeted ₱200.00, Spent ₱250.50, Total Balance ₱8749.50, Food 125%); wallet switch refreshed the data; a wallet with no accounts and no budgets showed both empty messages; offline showed the saved data with the stale note and "Offline · Showing saved data", and reconnect cleared it; Go to Budgets, Profile, Wallets and Home navigation.
+- **Not verified in the real app:** the loading and load-error states of the Dashboard (same `State` primitive as elsewhere).
 
 ## UI redesign, Phase A — UI foundation & app shell (2026-10-07)
 
