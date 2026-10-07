@@ -156,3 +156,15 @@ button.link { padding: var(--s-2) var(--s-1); background: none; color: var(--c-b
 .tx-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
 .tx-amount { font-size: var(--t-lg); text-align: right; }
 .btn.text-danger { color: var(--c-over); }
+
+/* Budgets */
+.month-nav { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
+.month-nav strong { grid-column: 1 / -1; text-align: center; font-size: var(--t-lg); }
+@media (min-width: 640px) {
+  .month-nav { grid-template-columns: 1fr auto 1fr; align-items: center; }
+  .month-nav strong { grid-column: 2; grid-row: 1; padding: 0 var(--s-3); }
+  .month-nav .btn:first-of-type { grid-column: 1; grid-row: 1; justify-self: start; }
+  .month-nav .btn:last-of-type { grid-column: 3; grid-row: 1; justify-self: end; }
+}
+.budget-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.budget { display: grid; gap: var(--s-2); overflow-wrap: anywhere; }

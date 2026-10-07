@@ -11,10 +11,18 @@ import { createCategoryService } from '../categories/categoryService'
 import type { Wallet } from '../wallets/wallet'
 import { currentMonth, monthLabel, parseBudget, parseBudgetAmount, shiftMonth, type Budget } from './budget'
 import { createBudgetService, type SpendRow } from './budgetService'
+import { Button } from '../../ui/Button'
+import { Dialog } from '../../ui/Dialog'
+import { Field } from '../../ui/Field'
+import { Meter } from '../../ui/Meter'
+import { Money } from '../../ui/Money'
+import { PageHeader } from '../../ui/PageHeader'
+import { State } from '../../ui/State'
 
 type BudgetSnapshot = { cats: Category[]; budgets: Budget[]; spend: SpendRow[] }
 
-export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId: string; onBack: () => void }) {
+/** `onBack` is only passed when the Dashboard opens this page outside the wallet shell; inside the shell the tabs are the navigation. */
+export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId: string; onBack?: () => void }) {
   const { items, syncedTick, online, cache } = useOffline()
   const tick0 = useRef(syncedTick) // the first load may show the saved snapshot while revalidating; reloads after a sync or write may not
   const [stale, setStale] = useState(false) // showing the saved snapshot (not confirmed by the server)
@@ -32,6 +40,7 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false) // dialog visibility only; the add form state above stays on this page
   const isOwner = wallet.role === 'owner' && !stale // UX only; RLS enforces it. Never edit from an unconfirmed snapshot
 
   const load = useCallback(
@@ -83,7 +92,7 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
     ev.preventDefault()
     const parsed = parseBudget({ ...form, month }, topLevel.map((c) => c.id))
     if (!parsed.ok) return setFormError(parsed.error)
-    void run(() => service!.create(wallet.id, parsed.value), () => setForm({ categoryId: '', amount: '' }))
+    void run(() => service!.create(wallet.id, parsed.value), () => { setForm({ categoryId: '', amount: '' }); setAddOpen(false) })
   }
 
   function saveEdit(ev: FormEvent) {
@@ -97,40 +106,43 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
     const s = calculateBudgetStatus(b.amountMinor, spent.get(b.categoryId) ?? 0)
     const name = nameOf.get(b.categoryId) ?? 'Category'
     return (
-      <li key={b.id}>
+      <li key={b.id} className="card budget">
         <strong>{name}</strong>
-        <div>₱{formatMinor(s.spent)} / ₱{formatMinor(s.budget)}</div>
-        <progress value={Math.min(s.percentUsed, 100)} max={100} aria-label={`${name} budget used`} />
+        <Meter percent={s.percentUsed} over={s.over} label={`${name} budget used`} />
+        <div><Money minor={s.spent} /> / <Money minor={s.budget} /></div>
         <div>
           {s.over ? (
-            <span role="alert" className="error">Over budget by ₱{formatMinor(-s.remaining)}</span>
+            <span role="alert" className="error">Over budget by <Money minor={-s.remaining} /></span>
           ) : (
-            <>₱{formatMinor(s.remaining)} remaining</>
+            <><Money minor={s.remaining} /> remaining</>
           )}
           {' · '}{s.percentUsed.toFixed(1)}% used
         </div>
         {isOwner && editing?.id === b.id && (
           <form onSubmit={saveEdit} noValidate>
-            <label>
-              Budget amount (₱)
+            <Field label="Budget amount (₱)">
               <input inputMode="decimal" value={editing.amount} onChange={(e) => setEditing({ id: b.id, amount: e.target.value })} disabled={busy} />
-            </label>
-            <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-            <button type="button" className="link" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+            </Field>
+            <div className="actions">
+              <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
+              <Button variant="ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
+            </div>
           </form>
         )}
         {isOwner && editing?.id !== b.id && (
           confirmDelete === b.id ? (
-            <small>
-              Delete this budget? Your transactions and balances are not affected.{' '}
-              <button type="button" className="link" disabled={busy} onClick={() => void run(() => service!.remove(b.id), () => setConfirmDelete(null))}>Confirm delete</button>{' '}
-              <button type="button" className="link" onClick={() => setConfirmDelete(null)}>Cancel</button>
-            </small>
-          ) : (
             <>
-              <button type="button" className="link" onClick={() => { setEditing({ id: b.id, amount: formatMinor(b.amountMinor) }); setConfirmDelete(null); setFormError(null) }}>Edit</button>{' '}
-              <button type="button" className="link" onClick={() => { setConfirmDelete(b.id); setFormError(null) }}>Delete</button>
+              <small>Delete this budget? Your transactions and balances are not affected.</small>
+              <div className="actions">
+                <Button variant="danger" disabled={busy} onClick={() => void run(() => service!.remove(b.id), () => setConfirmDelete(null))}>Confirm delete</Button>
+                <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+              </div>
             </>
+          ) : (
+            <div className="actions">
+              <Button variant="secondary" onClick={() => { setEditing({ id: b.id, amount: formatMinor(b.amountMinor) }); setConfirmDelete(null); setFormError(null) }}>Edit</Button>
+              <Button variant="ghost" className="text-danger" onClick={() => { setConfirmDelete(b.id); setFormError(null) }}>Delete</Button>
+            </div>
           )
         )}
       </li>
@@ -138,44 +150,47 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
   }
 
   return (
-    <section className="card">
-      <button type="button" className="link" onClick={onBack}>← Wallets</button>
-      <h2>{wallet.name} · Budgets</h2>
-      <nav aria-label="Budget month" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <button type="button" className="link" onClick={() => setMonth(shiftMonth(month, -1))}>‹ {monthLabel(shiftMonth(month, -1))}</button>
+    <>
+      <PageHeader
+        title={onBack ? `${wallet.name} · Budgets` : 'Budgets'}
+        onBack={onBack}
+        backLabel="Dashboard"
+        actions={isOwner ? <Button onClick={() => { setFormError(null); setAddOpen(true) }}>+ Add budget</Button> : undefined}
+      />
+      <nav aria-label="Budget month" className="month-nav">
         <strong aria-current="date">{monthLabel(month)}</strong>
-        <button type="button" className="link" onClick={() => setMonth(shiftMonth(month, 1))}>{monthLabel(shiftMonth(month, 1))} ›</button>
+        <Button variant="secondary" onClick={() => setMonth(shiftMonth(month, -1))}>‹ {monthLabel(shiftMonth(month, -1))}</Button>
+        <Button variant="secondary" onClick={() => setMonth(shiftMonth(month, 1))}>{monthLabel(shiftMonth(month, 1))} ›</Button>
       </nav>
-      {loadError && online && <p role="alert" className="error">{loadError}</p>}
-      {!online && !loaded && <p role="status">Budget data isn't available offline yet. Connect to the internet to see your budgets.</p>}
-      {stale && loaded && <p role="status"><small>{staleNote(checking)}</small></p>}
-      {!loaded && !loadError && online && <p role="status">Loading budgets…</p>}
-      {loaded && budgets.length === 0 && <p>No budgets for {monthLabel(month)}.{isOwner ? ' Create one below.' : ''}</p>}
-      {budgets.length > 0 && <ul className="list">{budgets.map(card)}</ul>}
-      {formError && <p role="alert" className="error">{formError}</p>}
+      {loadError && online && <State kind="error">{loadError}</State>}
+      {!online && !loaded && <State kind="empty">Budget data isn't available offline yet. Connect to the internet to see your budgets.</State>}
+      {stale && loaded && <p role="status" className="note">{staleNote(checking)}</p>}
+      {!loaded && !loadError && online && <State kind="loading">Loading budgets…</State>}
+      {loaded && budgets.length === 0 && <State kind="empty">No budgets for {monthLabel(month)}.{isOwner ? ' Use + Add budget to create one.' : ''}</State>}
+      {budgets.length > 0 && <ul className="budget-list">{budgets.map(card)}</ul>}
+      {formError && !addOpen && <p role="alert" className="error">{formError}</p>}
       {isOwner ? (
-        <form onSubmit={add} noValidate>
-          <strong>New budget for {monthLabel(month)}</strong>
-          <label>
-            Category
-            <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} disabled={busy}>
-              <option value="">Choose a category</option>
-              {topLevel.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </label>
-          <label>
-            Month
-            <input type="month" value={month.slice(0, 7)} onChange={(e) => e.target.value && setMonth(`${e.target.value}-01`)} disabled={busy} />
-          </label>
-          <label>
-            Budget amount (₱)
-            <input inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} disabled={busy} />
-          </label>
-          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add Budget'}</button>
-        </form>
+        <Dialog open={addOpen} onClose={() => setAddOpen(false)} dismissible={!busy} title={`New budget for ${monthLabel(month)}`}>
+          <form onSubmit={add} noValidate>
+            <Field label="Category">
+              <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} disabled={busy}>
+                <option value="">Choose a category</option>
+                {topLevel.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Month">
+              <input type="month" value={month.slice(0, 7)} onChange={(e) => e.target.value && setMonth(`${e.target.value}-01`)} disabled={busy} />
+            </Field>
+            <Field label="Budget amount (₱)">
+              <input inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} disabled={busy} />
+            </Field>
+            {formError && <p role="alert" className="error">{formError}</p>}
+            <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add Budget'}</Button>
+          </form>
+        </Dialog>
       ) : stale ? null : (
-        <small>Only the wallet owner can manage budgets.</small>
+        <p className="note info">Only the wallet owner can manage budgets.</p>
       )}
-    </section>
+    </>
   )
 }
