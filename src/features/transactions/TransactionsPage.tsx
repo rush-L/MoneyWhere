@@ -115,11 +115,13 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
       setFormOpen(false)
       await load() // offline this falls back to the saved snapshot; the queued item is merged in by `shown`
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Could not save the transaction.')
       if (e instanceof TransactionConflictError) {
-        setEditing(null) // the row changed under us: the form would only re-submit a stale version
+        // The row changed under us. Close and reset the edit (an edit that lost `editing` but kept its dialog and values
+        // would submit as a new transaction); the persistent notice explains, and Edit reopens on the latest version.
+        cancelEdit()
+        setNotice(e.message)
         void load()
-      }
+      } else setFormError(e instanceof Error ? e.message : 'Could not save the transaction.')
     } finally {
       setBusy(false)
     }

@@ -2,6 +2,18 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase C-1 — Transaction conflict-save safety fix (2026-10-07)
+
+One focused correctness fix in `TransactionsPage.tsx`. No change to the mutation RPC, versions, RLS, the outbox, offline replay, financial calculations or any other screen.
+
+- **Bug:** `save()` chooses between update and create from the `editing` state alone. When an online edit lost the version check (another client changed the same transaction first) and `TransactionConflictError` was thrown, the handler cleared `editing` but left `form` and `formOpen` alone. The dialog stayed open with the typed values, retitled "New transaction" with an "Add Transaction" button, so the next submit created a new transaction with a fresh id and no version check: a duplicate. Closing the dialog instead left the stale values as a draft for the next "+ Add".
+- **Reproduced** on the old code against hosted dev with two clients (an edit open in the browser, a second client changing the same row, then submitting twice): the first submit showed the conflict message inside a dialog now titled "New transaction", the second created a second ₱250.50 expense (3 rows became 4).
+- **Fix:** on `TransactionConflictError` the handler now calls the existing `cancelEdit()` (clears `editing`, the form and the form error, and closes the dialog), shows the service's conflict message with `setNotice`, and still calls `load()`. Other save failures are unchanged: they keep `editing`, so a retry stays an update.
+- **Behaviour after a conflict:** the edit is not saved; the dialog closes and the typed values are discarded; the latest server state is reloaded; a page notice ("Someone changed this transaction. Your edit was not saved; the latest version is shown.") stays until the next save; the user must reopen Edit, which shows the latest version, and re-apply the change; "+ Add" opens a clean form; no duplicate can be created from the conflicted edit.
+- **Not touched:** the delete-conflict path (it still reports through the load-error line, which a successful reload clears; left as is on purpose), `Keep server version`, offline edit and replay (a queued edit that conflicts at replay never reaches this handler and is presented per row as before).
+- **Verified (browser only, no automated test; the repository has no DOM test setup and none was added):** the same two-client scenario on the fixed code: the dialog closed, the notice was shown, the list stayed at 3 rows with the other client's version on top, no row carried the stale text, the dialog's form was reset (title "New transaction", empty fields), "+ Add" opened a clean form and a fresh Edit showed the latest note; normal edit saved; create and delete worked; an offline edit showed the pending state, reconnect synced it, and an offline edit made stale by the second client became a conflict row cleared with "Keep server version"; Dashboard balance, spent and remaining returned to the baseline (₱8749.50, ₱250.50, -₱50.50) after the test duplicate from the reproduction was deleted. TypeScript, lint, 308 tests and the production build pass.
+- **Limitation:** the discarded typed edit is not recoverable; the notice tells the user to reapply it. Only the online edit path is covered by this fix.
+
 ## UI redesign, Phase B — existing screen migration (in progress)
 
 Presentation only; no change to financial logic, services, RLS, offline or sync behaviour.
