@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../AuthProvider'
 import { validateEmail, validatePassword } from '../validation'
+import { Button } from '../../../ui/Button'
+import { Field } from '../../../ui/Field'
+import { State } from '../../../ui/State'
 
 export function AuthScreen() {
   const { service } = useAuth()
@@ -13,9 +16,11 @@ export function AuthScreen() {
 
   if (!service) {
     return (
-      <main className="card">
-        <h1>MoneyWhere</h1>
-        <p role="alert" className="error">Sign-in is unavailable: the app is not connected to Supabase. See README.</p>
+      <main className="auth">
+        <div className="card auth-card">
+          <h1 className="auth-brand">MoneyWhere</h1>
+          <State kind="error">Sign-in is unavailable: the app is not connected to Supabase. See README.</State>
+        </div>
       </main>
     )
   }
@@ -52,39 +57,39 @@ export function AuthScreen() {
   }
 
   return (
-    <main className="card">
-      <h1>MoneyWhere</h1>
-      <h2>{mode === 'signin' ? 'Sign in' : 'Create account'}</h2>
-      <form onSubmit={submit} noValidate>
-        <label>
-          Email
-          <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-        {error && <p role="alert" className="error">{error}</p>}
-        {notice && <p role="status">{notice}</p>}
-        <button type="submit" disabled={busy}>
-          {busy ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
-        </button>
-      </form>
-      <button type="button" className="secondary" disabled={busy} onClick={() => void run(() => service.signInWithGoogle())}>
-        Continue with Google
-      </button>
-      <p>
-        {mode === 'signin' ? 'New here?' : 'Already have an account?'}{' '}
-        <button type="button" className="link" onClick={switchMode}>
-          {mode === 'signin' ? 'Create Account' : 'Sign In'}
-        </button>
-      </p>
+    <main className="auth">
+      <div className="card auth-card">
+        <h1 className="auth-brand">MoneyWhere</h1>
+        <h2>{mode === 'signin' ? 'Sign in' : 'Create account'}</h2>
+        <form onSubmit={submit} noValidate>
+          <Field label="Email">
+            <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+          </Field>
+          <Field label="Password">
+            <input
+              type="password"
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={busy}
+            />
+          </Field>
+          {error && <p role="alert" className="error">{error}</p>}
+          {notice && <p role="status" className="note info">{notice}</p>}
+          <Button type="submit" disabled={busy}>
+            {busy ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+          </Button>
+        </form>
+        <Button variant="secondary" disabled={busy} onClick={() => void run(() => service.signInWithGoogle())}>
+          Continue with Google
+        </Button>
+        <p className="auth-switch">
+          {mode === 'signin' ? 'New here?' : 'Already have an account?'}{' '}
+          <Button variant="ghost" onClick={switchMode}>
+            {mode === 'signin' ? 'Create Account' : 'Sign In'}
+          </Button>
+        </p>
+      </div>
     </main>
   )
 }

@@ -5,6 +5,7 @@ import { SyncStatus } from '../features/offline/SyncStatus'
 import { AuthScreen } from '../features/auth/components/AuthScreen'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { Button } from '../ui/Button'
+import { State } from '../ui/State'
 import { ProfilePage } from '../features/profile/ProfilePage'
 import { WalletsPage } from '../features/wallets/WalletsPage'
 
@@ -14,7 +15,7 @@ function Shell() {
   const [signOutError, setSignOutError] = useState<string | null>(null)
   const [page, setPage] = useState<'dashboard' | 'wallets' | 'profile'>('dashboard')
 
-  if (state.status === 'LOADING') return <p role="status" className="center">Loading…</p>
+  if (state.status === 'LOADING') return <main className="auth"><State kind="loading">Loading…</State></main>
   if (state.status === 'UNAUTHENTICATED') return <AuthScreen />
 
   const { user } = state.session
