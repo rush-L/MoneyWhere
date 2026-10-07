@@ -1,0 +1,29 @@
+:root { font-family: system-ui, sans-serif; color: #111827; background: #f3f4f6; --brand: #0f766e; }
+body { margin: 0; }
+.card { box-sizing: border-box; width: calc(100% - 24px); max-width: 420px; margin: 16px auto; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px #0002; }
+.center { text-align: center; margin-top: 40vh; }
+.bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 8px 16px; background: #fff; box-shadow: 0 1px 2px #0001; }
+.bar nav { display: flex; flex-wrap: wrap; gap: 0 4px; align-items: center; }
+form { display: grid; gap: 12px; }
+label { display: grid; gap: 4px; font-size: 14px; min-width: 0; }
+input, select { min-width: 0; max-width: 100%; box-sizing: border-box; }
+input { padding: 10px; font-size: 16px; border: 1px solid #d1d5db; border-radius: 8px; }
+button { padding: 10px 14px; font-size: 16px; border: 0; border-radius: 8px; background: var(--brand); color: #fff; cursor: pointer; }
+button.secondary { width: 100%; margin-top: 12px; background: #fff; color: #111827; border: 1px solid #d1d5db; }
+button.link { padding: 10px 6px; min-height: 44px; background: none; color: var(--brand); text-decoration: underline; font-size: inherit; }
+button:disabled { opacity: 0.6; cursor: default; }
+.error { color: #b91c1c; margin: 0; }
+.avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: var(--brand); color: #fff; display: grid; place-items: center; font-size: 32px; }
+.list { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; }
+.list li { overflow-wrap: anywhere; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; }
+[aria-current="page"] { font-weight: 700; }
+.stat { display: grid; gap: 2px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; min-width: 0; overflow-wrap: anywhere; }
+.stat b { font-size: 22px; }
+select { padding: 10px; font-size: 16px; border: 1px solid #d1d5db; border-radius: 8px; }
+h2, p { overflow-wrap: anywhere; }
+:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid currentColor; }
+.pill.warn { color: #b45309; }
+.pill.error { color: #b91c1c; }
+.warn { color: #b45309; }
+.list li.pending { border-style: dashed; }

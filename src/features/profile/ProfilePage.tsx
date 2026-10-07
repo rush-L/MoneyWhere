@@ -1,0 +1,73 @@
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { supabase } from '../../lib/supabase'
+import { parseProfileInput, type Profile } from './profile'
+import { createProfileService } from './profileService'
+
+export function ProfilePage({ userId, email }: { userId: string; email: string | undefined }) {
+  const service = useMemo(() => (supabase ? createProfileService(supabase) : null), [])
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [avatar, setAvatar] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    service?.get(userId).then(
+      (p) => {
+        if (cancelled) return
+        setProfile(p)
+        setName(p.displayName ?? '')
+        setAvatar(p.avatarUrl ?? '')
+      },
+      (e: Error) => !cancelled && setLoadError(e.message),
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [service, userId])
+
+  async function save(ev: FormEvent) {
+    ev.preventDefault()
+    const parsed = parseProfileInput({ displayName: name, avatarUrl: avatar })
+    if (!parsed.ok) return setMessage({ kind: 'error', text: parsed.error })
+    setSaving(true)
+    setMessage(null)
+    try {
+      setProfile(await service!.update(userId, parsed.value))
+      setMessage({ kind: 'ok', text: 'Saved.' })
+    } catch (e) {
+      setMessage({ kind: 'error', text: e instanceof Error ? e.message : 'Could not save your profile.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loadError) return <p role="alert" className="error">{loadError}</p>
+  if (!profile) return <p role="status">Loading profile…</p>
+
+  return (
+    <section className="card">
+      <h2>Profile</h2>
+      {profile.avatarUrl ? (
+        <img className="avatar" src={profile.avatarUrl} alt="" referrerPolicy="no-referrer" />
+      ) : (
+        <div className="avatar" aria-hidden="true">{(profile.displayName ?? email ?? '?').charAt(0).toUpperCase()}</div>
+      )}
+      <p>{email}</p>
+      <form onSubmit={save} noValidate>
+        <label>
+          Display name
+          <input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} disabled={saving} />
+        </label>
+        <label>
+          Avatar image URL (https)
+          <input type="url" value={avatar} onChange={(e) => setAvatar(e.target.value)} disabled={saving} />
+        </label>
+        {message && <p role={message.kind === 'error' ? 'alert' : 'status'} className={message.kind === 'error' ? 'error' : ''}>{message.text}</p>}
+        <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+      </form>
+    </section>
+  )
+}

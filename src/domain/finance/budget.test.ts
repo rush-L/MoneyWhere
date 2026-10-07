@@ -1,0 +1,37 @@
+import { describe, expect, it } from 'vitest'
+import { calculateBudgetStatus, spendingByBudgetCategory, type Transaction } from './index'
+
+const P = (pesos: number) => pesos * 100
+const OCT = '2026-10-01'
+const cats = [
+  { id: 'food', parentId: null }, { id: 'groc', parentId: 'food' }, { id: 'coffee', parentId: 'food' }, { id: 'rest', parentId: 'food' },
+  { id: 'transport', parentId: null },
+]
+const tx = (type: Transaction['type'], category_id: string | null, pesos: number, date = '2026-10-15') =>
+  ({ type, category_id, amount_minor: P(pesos), date })
+
+describe('calculateBudgetStatus', () => {
+  it('remaining', () => expect(calculateBudgetStatus(P(8000), P(5000))).toMatchObject({ remaining: P(3000), percentUsed: 62.5, over: false }))
+  it('exact limit', () => expect(calculateBudgetStatus(P(8000), P(8000))).toMatchObject({ remaining: 0, percentUsed: 100, over: false }))
+  it('over budget', () => expect(calculateBudgetStatus(P(8000), P(9000))).toMatchObject({ remaining: -P(1000), percentUsed: 112.5, over: true }))
+  it('unrounded percentage', () => expect(calculateBudgetStatus(P(8000), P(5500)).percentUsed).toBe(68.75))
+  it('rejects non-positive budget', () => expect(() => calculateBudgetStatus(0, 0)).toThrow())
+})
+
+describe('spendingByBudgetCategory', () => {
+  const food = (txs: ReturnType<typeof tx>[]) => spendingByBudgetCategory(txs, cats, OCT).get('food')
+  it('subcategories roll up to the top-level category', () => expect(food([tx('expense', 'groc', 3000), tx('expense', 'coffee', 500)])).toBe(P(3500)))
+  it('multiple subcategories count exactly once each', () =>
+    expect(food([tx('expense', 'groc', 3000), tx('expense', 'coffee', 500), tx('expense', 'rest', 2000)])).toBe(P(5500)))
+  it('direct top-level expense counts', () => expect(food([tx('expense', 'food', 700)])).toBe(P(700)))
+  it('direct + subcategory together, no double count', () => expect(food([tx('expense', 'food', 700), tx('expense', 'groc', 300)])).toBe(P(1000)))
+  it('transfers excluded', () => expect(food([tx('transfer', null, 999), tx('expense', 'groc', 100)])).toBe(P(100)))
+  it('income excluded', () => expect(food([tx('income', 'groc', 999), tx('expense', 'groc', 100)])).toBe(P(100)))
+  it('other months excluded (incl. adjacent boundaries)', () =>
+    expect(food([tx('expense', 'groc', 1, '2026-09-30'), tx('expense', 'groc', 1, '2026-11-01'), tx('expense', 'groc', 1, '2026-10-01'), tx('expense', 'groc', 1, '2026-10-31')])).toBe(P(2)))
+  it('other top-level categories are separate buckets', () => {
+    const m = spendingByBudgetCategory([tx('expense', 'groc', 10), tx('expense', 'transport', 20)], cats, OCT)
+    expect([m.get('food'), m.get('transport')]).toEqual([P(10), P(20)])
+  })
+  it('unknown category ignored', () => expect(spendingByBudgetCategory([tx('expense', 'zzz', 5)], cats, OCT).size).toBe(0))
+})
