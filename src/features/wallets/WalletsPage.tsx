@@ -9,6 +9,13 @@ import { readThrough, walletsKey, type ReadResult } from '../offline/db/cache'
 import { useOffline } from '../offline/hooks/OfflineProvider'
 import { createWalletService } from './walletService'
 
+const SECTIONS = [
+  ['transactions', 'Transactions'],
+  ['accounts', 'Accounts'],
+  ['categories', 'Categories'],
+  ['budgets', 'Budgets'],
+] as const
+
 export function WalletsPage({ userId }: { userId: string }) {
   const service = useMemo(() => (supabase ? createWalletService(supabase) : null), [])
   const { cache } = useOffline()
@@ -55,10 +62,25 @@ export function WalletsPage({ userId }: { userId: string }) {
 
   if (selected) {
     const back = () => setSelected(null)
-    if (selected.page === 'transactions') return <TransactionsPage wallet={selected.wallet} userId={userId} onBack={back} />
-    if (selected.page === 'budgets') return <BudgetsPage wallet={selected.wallet} userId={userId} onBack={back} />
-    if (selected.page === 'accounts') return <AccountsPage wallet={selected.wallet} userId={userId} onBack={back} />
-    return <CategoriesPage wallet={selected.wallet} userId={userId} onBack={back} />
+    // Presentation only: exactly one section is mounted at a time, so switching tabs remounts and reloads it like before.
+    const { wallet } = selected
+    const section =
+      selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} onBack={back} />
+      : selected.page === 'budgets' ? <BudgetsPage wallet={wallet} userId={userId} onBack={back} />
+      : selected.page === 'accounts' ? <AccountsPage wallet={wallet} userId={userId} onBack={back} />
+      : <CategoriesPage wallet={wallet} userId={userId} onBack={back} />
+    return (
+      <>
+        <nav className="tabs" aria-label={`${wallet.name} sections`}>
+          {SECTIONS.map(([page, label]) => (
+            <button key={page} type="button" aria-current={selected.page === page ? 'page' : undefined} onClick={() => selected.page !== page && setSelected({ wallet, page })}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        {section}
+      </>
+    )
   }
 
   return (
