@@ -1,4 +1,4 @@
-import type { Session, SupabaseClient } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session, SupabaseClient } from '@supabase/supabase-js'
 import { authErrorMessage } from '../errors'
 
 /** Message is always safe to show to the user. */
@@ -12,15 +12,15 @@ function fail(err: unknown): never {
 }
 
 export function createAuthService(client: SupabaseClient) {
-  return {
+  const svc = {
     async getSession(): Promise<Session | null> {
       const { data, error } = await client.auth.getSession()
       if (error) fail(error)
       return data.session
     },
     /** Returns the unsubscribe function. */
-    onSessionChange(cb: (s: Session | null) => void): () => void {
-      const { data } = client.auth.onAuthStateChange((_e, s) => cb(s))
+    onSessionChange(cb: (s: Session | null, event: AuthChangeEvent) => void): () => void {
+      const { data } = client.auth.onAuthStateChange((e, s) => cb(s, e))
       return () => data.subscription.unsubscribe()
     },
     async signIn(email: string, password: string): Promise<void> {
@@ -47,7 +47,24 @@ export function createAuthService(client: SupabaseClient) {
       const { error } = await client.auth.signOut()
       if (error) fail(error)
     },
+    /**
+     * Neutral by design: Supabase answers the same for unknown emails, and its per-user throttle would reveal that an
+     * account exists, so only connectivity failures surface; every other result looks like success to the caller.
+     */
+    async requestPasswordReset(email: string): Promise<void> {
+      const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: redirectTo() })
+      if (!error) return
+      if (authErrorMessage(error) === authErrorMessage({ name: 'AuthRetryableFetchError' })) fail(error)
+      console.error('[auth]', error)
+    },
+    /** Sets the new password on the recovery session, then ends that session (the user signs in normally). */
+    async updatePassword(password: string): Promise<void> {
+      const { error } = await client.auth.updateUser({ password })
+      if (error) fail(error)
+      await svc.signOut()
+    },
   }
+  return svc
 }
 
 export type AuthService = ReturnType<typeof createAuthService>

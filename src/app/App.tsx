@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '../features/auth/AuthProvider'
 import { OfflineProvider } from '../features/offline/hooks/OfflineProvider'
 import { SyncStatus } from '../features/offline/SyncStatus'
 import { AuthScreen } from '../features/auth/components/AuthScreen'
+import { ResetPasswordScreen } from '../features/auth/components/ResetPasswordScreen'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { Button } from '../ui/Button'
 import { State } from '../ui/State'
@@ -16,7 +17,9 @@ function Shell() {
   const [page, setPage] = useState<'dashboard' | 'wallets' | 'profile'>('dashboard')
 
   if (state.status === 'LOADING') return <main className="auth"><State kind="loading">Loading…</State></main>
-  if (state.status === 'UNAUTHENTICATED') return <AuthScreen />
+  // key: remount the screen when a notice or link error arrives so its initial mode/notice apply.
+  if (state.status === 'UNAUTHENTICATED') return <AuthScreen key={state.linkError ?? state.notice ?? ''} />
+  if (state.status === 'RECOVERY') return <ResetPasswordScreen />
 
   const { user } = state.session
   return (
