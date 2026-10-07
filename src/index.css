@@ -90,9 +90,7 @@ main.card { max-width: 420px; margin: var(--s-4) auto; } /* AuthScreen, until it
 .wallet-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); }
 .wallet-id { display: grid; gap: var(--s-2); min-width: 0; overflow-wrap: anywhere; }
 .wallet-meta { display: flex; gap: var(--s-2); }
-/* Until each section page is migrated (Phase B), the shell's header and tabs replace its own back link and heading. */
 .wallet-shell { display: grid; gap: var(--s-4); }
-.wallet-shell > section.card > :is(button.link:first-child, h2:first-of-type) { display: none; }
 
 /* ---- forms ---- */
 form { display: grid; gap: var(--s-3); }
@@ -175,3 +173,9 @@ button.link { padding: var(--s-2) var(--s-1); background: none; color: var(--c-b
 .account-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s-2); width: 100%; }
 .account-balance { display: grid; gap: 2px; }
 .account-balance b { font-size: var(--t-xl); }
+
+/* Categories */
+.category-list, .subcategory-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.category { display: grid; gap: var(--s-3); }
+.cat-row { display: grid; gap: var(--s-2); overflow-wrap: anywhere; }
+.subcategory-list { margin-left: var(--s-3); padding-left: var(--s-3); border-left: 2px solid var(--c-border); }

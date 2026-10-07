@@ -74,7 +74,7 @@ export function WalletsPage({ userId }: { userId: string }) {
       selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} />
       : selected.page === 'budgets' ? <BudgetsPage wallet={wallet} userId={userId} />
       : selected.page === 'accounts' ? <AccountsPage wallet={wallet} userId={userId} />
-      : <CategoriesPage wallet={wallet} userId={userId} onBack={back} />
+      : <CategoriesPage wallet={wallet} userId={userId} />
     return (
       <div className="wallet-shell">
         <PageHeader title={wallet.name} onBack={back} backLabel="Wallets" />
