@@ -2,6 +2,17 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## UI redesign, Phase A — UI foundation & app shell (2026-10-07)
+
+Presentation only. No change to financial formulas, transaction semantics, RLS, mutation RPCs, offline projection, IndexedDB/outbox, Realtime or authorization. No router, UI library or dark mode added. `01-APP-SPEC.md` and `02-ROADMAP.md` unchanged.
+
+### Status: VERIFIED, READY FOR PHASE B (commit `e7852d5`)
+- **Added:** CSS tokens (colour roles, 4px spacing, type, radii, widths; semantic roles only so dark mode can be added later); `src/ui/` primitives (`Button`, `Field`, `Badge`, `Money`, `PageHeader`, `Section`, `Dialog`, `State`, `Meter`); app shell (bottom nav under 640px, top nav from 640px, content max 720px / 880px from 1024px); `SyncStatus` as a badge with unchanged text; wallet section tabs (one section mounted at a time, so a tab switch remounts and reloads as before).
+- **Verified (real signed-in hosted-dev app, desktop Chrome, same-origin iframes at exact widths):** 360 / 768 / 1280, no horizontal overflow, targets at least 44px, nav switch at 640, width change at 1024, bottom nav does not cover content; wallet selection and all four tabs; each tab switch remounts and refetches; real SyncStatus through synced, offline, pending, reconnect, conflict and "Keep server version"; balances and budget figures unchanged. TypeScript, lint, build PASS; 308 tests PASS.
+- **Not verified (limitations, not failures):** BLOCKED state (not reproduced, no state was manufactured); `Dialog` in the signed-in app (arrives with Phase B); other-member transaction permissions in the browser (authorization code untouched); physical devices, Safari, Firefox.
+- **Left for Phase B:** duplicated "← Wallets" links and section headings, old wallet-list text links, sign-in screen 420px cap.
+- **Test data:** the throwaway verification user and "UI TEST Wallet" were removed with a targeted one-off delete (exact user and wallet ids, wallet had a single member). The 9 older users and 2 `mwoff…` wallets from the Phase 14 dry run were not touched; `cleanup.mjs --apply` has still not been run.
+
 ## Phase 14 — Hardening & release readiness (2026-10-07)
 
 No new financial features, no change to financial formulas, transaction semantics, the mutation RPC, RLS or Realtime. `01-APP-SPEC.md` and `02-ROADMAP.md` unchanged.
