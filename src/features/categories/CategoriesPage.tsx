@@ -136,6 +136,7 @@ export function CategoriesPage({ wallet, userId }: { wallet: Wallet; userId: str
     <>
       <PageHeader
         title="Categories"
+        level={2}
         actions={isOwner ? <Button onClick={() => { setFormError(null); setAddOpen(true) }}>+ Add category</Button> : undefined}
       />
       {loadError && online && <State kind="error">{loadError}</State>}

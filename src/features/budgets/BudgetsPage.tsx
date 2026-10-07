@@ -153,6 +153,7 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
     <>
       <PageHeader
         title={onBack ? `${wallet.name} · Budgets` : 'Budgets'}
+        level={onBack ? 1 : 2}
         onBack={onBack}
         backLabel="Dashboard"
         actions={isOwner ? <Button onClick={() => { setFormError(null); setAddOpen(true) }}>+ Add budget</Button> : undefined}

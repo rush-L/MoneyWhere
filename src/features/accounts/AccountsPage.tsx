@@ -125,6 +125,7 @@ export function AccountsPage({ wallet, userId }: { wallet: Wallet; userId: strin
     <>
       <PageHeader
         title="Accounts"
+        level={2}
         actions={isOwner ? <Button onClick={() => { setFormError(null); setFormOpen(true) }}>+ Add account</Button> : undefined}
       />
       {loadError && <State kind="error">{loadError}</State>}

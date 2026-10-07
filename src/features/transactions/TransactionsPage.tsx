@@ -183,6 +183,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
     <>
       <PageHeader
         title="Transactions"
+        level={2}
         actions={accounts.length > 0 ? <Button onClick={() => { setFormError(null); setFormOpen(true) }}>+ Add</Button> : undefined}
       />
       {loadError && <State kind="error">{loadError}</State>}
@@ -192,7 +193,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
       {shown?.length === 0 && <State kind="empty">No transactions yet.</State>}
       {days.map((day, i) => (
         <section key={`${day.date}-${i}`} className="tx-day">
-          <h2 className="tx-date">{day.date}</h2>
+          <h3 className="tx-date">{day.date}</h3>
           <ul className="tx-list">
             {day.rows.map((t) => (
               <li key={t.id} className={`card tx${t.sync ? ' pending' : ''}`}>
