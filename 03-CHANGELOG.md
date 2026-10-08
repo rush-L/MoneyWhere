@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Production migration D4–D7 (2026-10-08)
+
+The D4–D7 code was pushed to `main` (`e398af5..e9fe878`) and auto-deployed to production before production had the migrations, so the database was behind the deployed app for a short window. Production Supabase (`zoyauiojqpcglyhxzzkh`) was at `20261022000000` (18 migrations, history identical to the repository).
+
+- **Applied to production:** `20261023000000_membership.sql`, `20261024000000_co_member_visibility.sql`, `20261025000000_ownership_transfer.sql`, `20261026000000_who_paid.sql`, in that order, with `supabase db push --project-ref zoyauiojqpcglyhxzzkh` after a dry run that listed exactly those four. No migration file was edited; no seeds or roles changed.
+- **History check:** `supabase migration list` shows 22 local / 22 remote, no gaps and no unexpected versions.
+- **Production smoke test (manual, by the project owner, reported as passed):** sign-in; existing wallets, accounts and transactions visible; expense creation; Who Paid on expenses; Received by on income; transfer without a payer; payer/recipient edit persists; temporary test transactions removed; no unexpected data changes observed. Invitation, remove/leave and ownership-transfer flows were not separately reported.
+- **Not done:** no backup or restore point was confirmed before the push (not reported).
+- D8 is not started.
+
 ## Phase D7 — Who Paid / Received by (2026-10-08)
 
 Implements `01-APP-SPEC.md` section 9.1. D8 and later are not started. Migration `20261026000000_who_paid.sql` is applied to the DEV project only (`sitlhdkfihzmdzxfrliv`); production untouched.
