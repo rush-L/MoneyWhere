@@ -89,7 +89,7 @@ h2, p { overflow-wrap: anywhere; }
 .wallet-id { display: grid; gap: var(--s-2); min-width: 0; overflow-wrap: anywhere; }
 .wallet-meta { display: flex; gap: var(--s-2); }
 .member-name { display: inline-flex; align-items: center; gap: var(--s-2); }
-.avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+.member-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
 .wallet-shell { display: grid; gap: var(--s-4); }
 
 /* ---- forms ---- */

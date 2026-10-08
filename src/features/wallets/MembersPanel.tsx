@@ -72,7 +72,7 @@ export function MembersPanel({ wallet, userId, onLeft }: { wallet: Wallet; userI
               <li key={m.userId} className="wallet-row">
                 <div className="wallet-id">
                   <strong className="member-name">
-                    {m.avatarUrl && <img className="avatar" src={m.avatarUrl} alt="" referrerPolicy="no-referrer" />}
+                    {m.avatarUrl && <img className="member-avatar" src={m.avatarUrl} alt="" referrerPolicy="no-referrer" />}
                     {labels.get(m.userId)}
                   </strong>
                   <span className="wallet-meta">
