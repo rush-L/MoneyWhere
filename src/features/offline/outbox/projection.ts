@@ -59,8 +59,9 @@ export function pendingEffect(server: readonly Ref[], items: readonly OutboxItem
     if (op === 'DELETE') out.deleted.add(i.id)
     else {
       const p = i.payload!
-      // No payer in the payload (queued before D7, or "keep") keeps the row's payer; a transfer has none.
-      const paid = p.type === 'transfer' ? null : (p.paid_by_user_id ?? row.paid_by_user_id ?? row.created_by)
+      // No payer in the payload (queued before D7, or "keep") keeps the row's payer, even null (an anonymized payer stays
+      // Former member, never the creator); a transfer has none. A transfer turned into income/expense with no payer takes the user.
+      const paid = p.type === 'transfer' ? null : (p.paid_by_user_id ?? (row.type === 'transfer' ? i.user_id : row.paid_by_user_id))
       out.overlaid.set(i.id, { ...row, ...p, paid_by_user_id: paid, sync: i.status === 'SYNCED' ? undefined : i.status })
     }
   }

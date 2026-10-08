@@ -34,6 +34,8 @@ interface OfflineValue {
   deleteTransaction: (walletId: string, row: TxRef) => Promise<'synced' | 'queued'>
   /** Keep server version: drop a CONFLICT/BLOCKED item. */
   discardItem: (id: string) => Promise<void>
+  /** A FRESH IndexedDB read (not React state): does this user's outbox hold ANY item, in any status? Read-only. */
+  hasPendingChanges: () => Promise<boolean>
 }
 
 /** What an edit/delete needs to know about the row the user is looking at. */
@@ -207,10 +209,11 @@ export function OfflineProvider({ userId, children }: { userId: string; children
     [mutateOrQueue, txService, stores, userId],
   )
   const discardItem = useCallback(async (id: string) => void (await stores?.outbox.discard(id)), [stores])
+  const hasPendingChanges = useCallback(async () => (stores ? stores.outbox.hasAny(userId) : false), [stores, userId])
 
   const value = useMemo(
-    () => ({ online, items, syncedTick, realtime: watchedWallet ? realtime : ('DISCONNECTED' as const), setWatchedWallet, cache: stores?.cache ?? null, saveTransaction, editTransaction, deleteTransaction, discardItem }),
-    [online, items, syncedTick, realtime, watchedWallet, stores, saveTransaction, editTransaction, deleteTransaction, discardItem],
+    () => ({ online, items, syncedTick, realtime: watchedWallet ? realtime : ('DISCONNECTED' as const), setWatchedWallet, cache: stores?.cache ?? null, saveTransaction, editTransaction, deleteTransaction, discardItem, hasPendingChanges }),
+    [online, items, syncedTick, realtime, watchedWallet, stores, saveTransaction, editTransaction, deleteTransaction, discardItem, hasPendingChanges],
   )
   // Pages load on mount: wait for the (millisecond) IndexedDB open so their first read can already use the snapshot
   // instead of starting a network request that offline can only fail slowly.

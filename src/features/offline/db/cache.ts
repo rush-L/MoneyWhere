@@ -14,6 +14,15 @@ export function createCache(db: IDBDatabase) {
       tx.objectStore(CACHE).put({ key, value })
       await committed(tx)
     },
+    /**
+     * Removes every snapshot of ONE user (keys are `${userId}:…`; the colon ends the prefix, so one id can never match
+     * another's). Other users' snapshots and the outbox are not touched.
+     */
+    async clearUser(userId: string): Promise<void> {
+      const tx = db.transaction(CACHE, 'readwrite')
+      tx.objectStore(CACHE).delete(IDBKeyRange.bound(`${userId}:`, `${userId}:￿`))
+      await committed(tx)
+    },
   }
 }
 

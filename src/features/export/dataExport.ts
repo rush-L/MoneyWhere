@@ -31,9 +31,12 @@ export interface ExportInput {
   wallets: readonly WalletExportInput[]
 }
 
-/** A creator/payer reference: the id only while that person is a CURRENT member of the wallet; otherwise null + a label. */
-function person(id: string | null, names: ReadonlyMap<string, string | null>): { id: string | null; label: string | null } {
-  if (id === null) return { id: null, label: null }
+/**
+ * A creator/payer reference: the id only while that person is a CURRENT member of the wallet; otherwise null + a label.
+ * A null id means a deleted account (Former member), except a transfer's payer (`nobody`): a transfer has none.
+ */
+function person(id: string | null, names: ReadonlyMap<string, string | null>, nobody = false): { id: string | null; label: string | null } {
+  if (id === null) return { id: null, label: nobody ? null : FORMER_MEMBER }
   if (!names.has(id)) return { id: null, label: FORMER_MEMBER }
   return { id, label: names.get(id) ?? null }
 }
@@ -62,7 +65,7 @@ export function buildExport(input: ExportInput) {
       budgets: budgets.map((b) => ({ id: b.id, category_id: b.categoryId, month: b.month, amount_minor: b.amountMinor, currency: wallet.currency })),
       transactions: transactions.map((t) => {
         const by = person(t.created_by, names)
-        const paid = person(t.paid_by_user_id, names)
+        const paid = person(t.paid_by_user_id, names, t.type === 'transfer')
         return {
           id: t.id,
           type: t.type,

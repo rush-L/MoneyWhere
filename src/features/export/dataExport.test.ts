@@ -103,6 +103,24 @@ describe('former members', () => {
   it('a transfer exports with a null payer and no label', () => {
     expect(t('t4')).toMatchObject({ type: 'transfer', destination_account_id: 'a2', category_id: null, paid_by_user_id: null, paid_by_label: null })
   })
+  it('an anonymized (deleted-account) creator or payer, stored as null, is "Former member"; a transfer payer stays unlabelled (D9)', () => {
+    const anon: WalletExportInput = {
+      ...wallet,
+      transactions: [
+        tx({ id: 'n1', created_by: null, paid_by_user_id: null }),
+        tx({ id: 'n2', created_by: ME, paid_by_user_id: null }),
+        tx({ id: 'n3', type: 'income', category_id: null, created_by: null, paid_by_user_id: BELLA }),
+        tx({ id: 'n4', type: 'transfer', category_id: null, destination_account_id: 'a2', created_by: null, paid_by_user_id: null }),
+        tx({ id: 'n5', type: 'transfer', category_id: null, destination_account_id: 'a2', created_by: ME, paid_by_user_id: null }),
+      ],
+    }
+    const x = (id: string) => buildExport({ ...input, wallets: [anon] }).wallets[0]!.transactions.find((r) => r.id === id)!
+    expect(x('n1')).toMatchObject({ created_by: null, created_by_label: 'Former member', paid_by_user_id: null, paid_by_label: 'Former member' })
+    expect(x('n2')).toMatchObject({ created_by: ME, created_by_label: 'Me Myself', paid_by_user_id: null, paid_by_label: 'Former member' })
+    expect(x('n3')).toMatchObject({ created_by: null, created_by_label: 'Former member', paid_by_user_id: BELLA, paid_by_label: 'Bella' })
+    expect(x('n4')).toMatchObject({ created_by: null, created_by_label: 'Former member', paid_by_user_id: null, paid_by_label: null })
+    expect(x('n5')).toMatchObject({ created_by: ME, paid_by_user_id: null, paid_by_label: null })
+  })
   it('membership is per wallet: someone current in one wallet is a former member in another', () => {
     const other: WalletExportInput = { ...wallet, wallet: { ...wallet.wallet, id: 'w2' }, members: [{ userId: ME, role: 'owner', displayName: 'Me Myself' }], transactions: [tx({ id: 'x', created_by: BELLA, paid_by_user_id: BELLA })] }
     const d = buildExport({ ...input, wallets: [wallet, other] })

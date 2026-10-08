@@ -590,6 +590,15 @@ Principle: preserve valid financial records for other members, and remove the de
 
 Deleting the authentication identity is a privileged server-side operation. It must re-verify the caller and re-check the blockers on the server rather than trust the client.
 
+Implementation rules (Phase D9):
+
+- **One atomic server call.** A `SECURITY DEFINER` database function derives the caller from the session (it accepts no user id), re-checks every blocker, anonymizes history, removes memberships and deletes the authentication user in one transaction. Any failure leaves everything unchanged. No service-role credential is involved.
+- **Confirmation.** The user types `DELETE`; no password re-entry (so it works for password and Google users). The client sends the wallets it showed as "will be deleted"; if the server's own set differs (for example a member left or joined in the meantime) the call is refused with "your wallets changed, review again" and nothing is deleted. The client list never authorizes anything.
+- **Anonymized income/expense.** An income or expense whose payer is a deleted account keeps `paid_by_user_id` NULL and shows **Former member** until a wallet owner explicitly picks a current member: editing the amount, note or date never makes the editor the payer. A transfer's creator becomes NULL; its payer stays NULL (a transfer never has one). Converting a transfer to income/expense defaults the editor as payer; converting to a transfer clears it.
+- **Blocked by any pending local change.** Any item in the local outbox, in any status (pending, syncing, failed, blocked, conflict), blocks deletion; the outbox is re-read from storage at the moment of deletion and is never cleared or discarded by it. Deletion also needs a connection.
+- **Local data.** After success the device signs out locally and removes that user's cached wallet snapshots; other users' cached data is untouched.
+- **Known limit.** The server cannot see another device's outbox; changes still queued there will be rejected after deletion.
+
 ---
 
 # 18. Security

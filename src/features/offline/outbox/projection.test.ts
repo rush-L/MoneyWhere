@@ -73,6 +73,16 @@ describe('who paid / received by (D7)', () => {
     const [r] = mergeLocal([{ ...srv('s'), version: 1, paid_by_user_id: 'gone' }], [upd(expense(), { ...srv('s'), paid_by_user_id: 'gone' })], 'w1')
     expect(r!.paid_by_user_id).toBe('gone')
   })
+  it('a pending edit of an anonymized row (payer null) keeps it null: never the creator, never the editor (D9)', () => {
+    const anon = { ...srv('s'), created_by: null, paid_by_user_id: null }
+    const [r] = mergeLocal([{ ...anon, version: 1 }], [upd(expense({ amount_minor: 700 }), anon)], 'w1')
+    expect(r).toMatchObject({ created_by: null, paid_by_user_id: null, amount_minor: 700 })
+  })
+  it('a transfer turned into income/expense with no payer takes the user; an explicit payer wins (D9)', () => {
+    const tr = { ...srv('s'), type: 'transfer' as const, destination_account_id: 'acc2', category_id: null, paid_by_user_id: null }
+    expect(mergeLocal([{ ...tr, version: 1 }], [upd(expense(), tr)], 'w1')[0]!.paid_by_user_id).toBe('A')
+    expect(mergeLocal([{ ...tr, version: 1 }], [upd(expense({ paid_by_user_id: 'B' }), tr)], 'w1')[0]!.paid_by_user_id).toBe('B')
+  })
   it('payer attribution does not change balances', () => {
     const a = localBalances([acct('acc1', 1000)], [], [item('e', expense({ amount_minor: 300 }))], 'w1')[0]!.currentBalanceMinor
     const b = localBalances([acct('acc1', 1000)], [], [item('e', expense({ amount_minor: 300, paid_by_user_id: 'B' }))], 'w1')[0]!.currentBalanceMinor

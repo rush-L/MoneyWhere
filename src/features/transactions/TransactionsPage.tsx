@@ -12,7 +12,7 @@ import { describeSync, staleNote } from '../offline/syncLabels'
 import { memberLabels, participantLabel } from '../wallets/membership'
 import { createMembershipService } from '../wallets/membershipService'
 import type { Wallet } from '../wallets/wallet'
-import { canManage, parseTransaction, todayLocal, type TransactionRow } from './transaction'
+import { canManage, parseTransaction, hasFormerPayer, resolvePayer, todayLocal, type TransactionRow } from './transaction'
 import { applyFilters, EMPTY_FILTERS, hasFilters, TYPE_LABEL, type TxFilters } from './transactionFilter'
 import { createTransactionService, TransactionConflictError } from './transactionService'
 import { Badge } from '../../ui/Badge'
@@ -40,7 +40,7 @@ function CheckGroup({ legend, options, selected, onChange }: { legend: string; o
 }
 
 type TxSnapshot = { list: TransactionRow[]; accs: Account[]; cats: Category[] }
-const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '', paidByUserId: '' }) // paidByUserId '' = the signed-in user
+const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '', paidByUserId: '', keepFormer: false }) // paidByUserId '' = the signed-in user
 
 export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: string }) {
   const txService = useMemo(() => (supabase ? createTransactionService(supabase) : null), [])
@@ -165,8 +165,11 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
 
   // Who Paid / Received by: current members only (the server enforces it). An edited row whose payer has since left keeps
   // that value as "Former member" so saving does not silently reassign it; offline (no member list) only "You" is offered.
-  const payerId = form.paidByUserId || userId
-  const payerIds = [...new Set([userId, ...(labels?.keys() ?? []), payerId])]
+  // An anonymized payer (null) is kept as "Former member (unchanged)" until a member is explicitly chosen; it is never reassigned to the editor.
+  // (keepFormer lives in the form state, set by startEdit; the helper is memoized because the React compiler lint rejects a bare call here.)
+  const keepFormer = form.keepFormer
+  const payerId = useMemo(() => resolvePayer(keepFormer, form.paidByUserId, userId), [keepFormer, form.paidByUserId, userId])
+  const payerIds = [...new Set([userId, ...(labels?.keys() ?? []), payerId])].filter(Boolean)
 
   async function save(ev: FormEvent) {
     ev.preventDefault()
@@ -212,7 +215,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
     setEditing(t)
     setFormError(null)
     setFormOpen(true)
-    setForm({ type: t.type, accountId: t.account_id, destinationAccountId: t.destination_account_id ?? '', categoryId: t.category_id ?? '', amount: formatMinor(t.amount_minor), date: t.date, note: t.note ?? '', paidByUserId: t.paid_by_user_id ?? '' })
+    setForm({ type: t.type, accountId: t.account_id, destinationAccountId: t.destination_account_id ?? '', categoryId: t.category_id ?? '', amount: formatMinor(t.amount_minor), date: t.date, note: t.note ?? '', paidByUserId: t.paid_by_user_id ?? '', keepFormer: hasFormerPayer(t) })
   }
   function cancelEdit() {
     setEditing(null)
@@ -382,6 +385,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
             {!transfer && (
               <Field label={form.type === 'income' ? 'Received by' : 'Who Paid'}>
                 <select value={payerId} onChange={set('paidByUserId')} disabled={busy}>
+                  {form.keepFormer ? <option value="">Former member (unchanged)</option> : null}
                   {payerIds.map((id) => <option key={id} value={id}>{participantLabel(id, userId, labels)}</option>)}
                 </select>
               </Field>

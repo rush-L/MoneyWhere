@@ -97,6 +97,10 @@ export function createOutbox(db: IDBDatabase) {
       const all = await request<OutboxItem[]>(os.index('user_id').getAll(userId))
       return all.map(norm).sort((a, b) => a.seq - b.seq)
     },
+    /** Any item at all, in any status. Account deletion must never run over unresolved local changes. A fresh read. */
+    async hasAny(userId: string): Promise<boolean> {
+      return (await this.list(userId)).length > 0
+    },
     /** What a sync run may send: this user's PENDING/FAILED items, oldest first. */
     async listSyncable(userId: string): Promise<OutboxItem[]> {
       return (await this.list(userId)).filter((i) => i.status === 'PENDING' || i.status === 'FAILED')

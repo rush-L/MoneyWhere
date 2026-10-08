@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Button } from '../../ui/Button'
 import { Section } from '../../ui/Section'
 import { useOffline } from '../offline/hooks/OfflineProvider'
-import { exportFilename } from './dataExport'
+import { downloadExport } from './downloadExport'
 import { loadExport, type ExportProgress } from './exportService'
 
 /** Online only: the file comes from fresh server reads, never from the device's offline copy. */
@@ -18,12 +18,7 @@ export function ExportSection({ userId }: { userId: string }) {
     setBusy({ done: 0, total: 1, label: 'Starting…' })
     try {
       const doc = await loadExport(supabase, userId, setBusy)
-      const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = exportFilename(new Date(doc.exported_at))
-      a.click()
-      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      downloadExport(doc)
       setMessage({ kind: 'ok', text: `Exported ${doc.counts.transactions} transactions from ${doc.counts.wallets} wallets.` })
     } catch (e) {
       setMessage({ kind: 'error', text: e instanceof Error ? e.message : 'Could not export your data.' })

@@ -47,6 +47,11 @@ export function createAuthService(client: SupabaseClient) {
       const { error } = await client.auth.signOut()
       if (error) fail(error)
     },
+    /** Ends this device's session without calling the server. Used after account deletion, when the server no longer knows the user. */
+    async signOutLocal(): Promise<void> {
+      const { error } = await client.auth.signOut({ scope: 'local' })
+      if (error) fail(error)
+    },
     /**
      * Neutral by design: Supabase answers the same for unknown emails, and its per-user throttle would reveal that an
      * account exists, so only connectivity failures surface; every other result looks like success to the caller.

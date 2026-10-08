@@ -6,8 +6,8 @@ export type TxType = 'income' | 'expense' | 'transfer'
 export interface TransactionRow extends Transaction {
   type: TxType
   note: string | null
-  created_by: string
-  paid_by_user_id: string | null // null for transfers
+  created_by: string | null // null once the creator deleted their account (shown as Former member; only the wallet owner manages the row)
+  paid_by_user_id: string | null // null for transfers, and for an income/expense whose payer deleted their account (Former member)
   /** Optimistic-concurrency version from the server. Absent only in snapshots saved before Phase 11B (those rows cannot be edited offline). */
   version?: number
 }
@@ -67,6 +67,17 @@ export function parseTransaction(i: TransactionInput): { ok: true; value: NewTra
 /** Local calendar day as YYYY-MM-DD (not UTC, so late-evening entries don't land on tomorrow). */
 export const todayLocal = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/** An income/expense whose payer deleted their account (payer null): it stays "Former member" until a member is explicitly chosen. */
+export const hasFormerPayer = (t: Pick<TransactionRow, 'type' | 'paid_by_user_id'> | null | undefined) => !!t && t.type !== 'transfer' && t.paid_by_user_id === null
+
+/**
+ * The payer the form submits. Empty = "keep the stored payer" (the server leaves it untouched, so null stays null).
+ * An anonymized income/expense (`keepFormer`) must NOT silently become the editor: it stays "Former member" until someone
+ * explicitly picks a member. Everything else defaults to the signed-in user (a transfer being converted has no payer yet,
+ * so it also defaults to the user). The server enforces all of this; this only decides what the UI sends.
+ */
+export const resolvePayer = (keepFormer: boolean, selected: string, userId: string) => selected || (keepFormer ? '' : userId)
 
 /** UX only; RLS enforces it. Owner manages all, a member only their own. */
 export const canManage = (isOwner: boolean, t: Pick<TransactionRow, 'created_by'>, userId: string) => isOwner || t.created_by === userId
