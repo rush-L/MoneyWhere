@@ -76,7 +76,7 @@ export function WalletsPage({ userId }: { userId: string }) {
       selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} />
       : selected.page === 'budgets' ? <BudgetsPage wallet={wallet} userId={userId} />
       : selected.page === 'accounts' ? <AccountsPage wallet={wallet} userId={userId} />
-      : selected.page === 'members' ? <MembersPanel wallet={wallet} userId={userId} onLeft={() => { setSelected(null); void load() }} />
+      : selected.page === 'members' ? <MembersPanel wallet={wallet} userId={userId} onLeft={() => { setSelected(null); void load() }} onTransferred={() => { setSelected({ wallet: { ...wallet, role: 'member' }, page: 'members' }); void load() }} />
       : <CategoriesPage wallet={wallet} userId={userId} />
     return (
       <div className="wallet-shell">

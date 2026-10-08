@@ -223,7 +223,9 @@ Owner creates invite → secure random token → link shared by owner
 - Only the current owner can transfer.
 - The destination must already be a member of that wallet, and not the owner.
 - The transfer is **atomic**: the old owner becomes a Member and the destination becomes Owner in one transaction, so there are never zero or two owners.
-- Transaction history is unchanged.
+- The destination must be a **current** member of the same wallet (not an outsider, a former member or a member of another wallet); nothing is created as a side effect. The old owner stays a member.
+- Transaction history (`created_by`, `paid_by_user_id`) and all wallet data are unchanged; it is the same wallet.
+- Online only; never queued in the offline outbox.
 - If the owner is the only member there is no destination, so transfer is rejected (the owner may delete the wallet instead).
 
 ## 6.5 Co-member visibility and former-member privacy

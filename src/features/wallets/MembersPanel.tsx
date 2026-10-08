@@ -15,7 +15,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString()
  * Members and invitations for one wallet. Online only: membership changes are never queued offline.
  * Authorization is the database's; the owner-only controls here just mirror it.
  */
-export function MembersPanel({ wallet, userId, onLeft }: { wallet: Wallet; userId: string; onLeft: () => void }) {
+export function MembersPanel({ wallet, userId, onLeft, onTransferred }: { wallet: Wallet; userId: string; onLeft: () => void; onTransferred: () => void }) {
   const service = useMemo(() => (supabase ? createMembershipService(supabase) : null), [])
   const isOwner = wallet.role === 'owner'
   const [members, setMembers] = useState<Member[] | null>(null)
@@ -27,6 +27,8 @@ export function MembersPanel({ wallet, userId, onLeft }: { wallet: Wallet; userI
   const [copied, setCopied] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
   const [leaving, setLeaving] = useState(false)
+  const [transferTo, setTransferTo] = useState<string | null>(null) // chosen target
+  const [confirmTransfer, setConfirmTransfer] = useState(false)
 
   const load = useCallback(() => {
     if (!service) return Promise.resolve()
@@ -92,6 +94,25 @@ export function MembersPanel({ wallet, userId, onLeft }: { wallet: Wallet; userI
 
       {isOwner && (
         <div className="card">
+          <Section title="Transfer ownership">
+            {members.some((m) => m.role === 'member') ? (
+              <>
+                <p>Make another member the Owner. You will become a Member.</p>
+                <select aria-label="New owner" value={transferTo ?? ''} disabled={busy} onChange={(e) => setTransferTo(e.target.value || null)}>
+                  <option value="">Choose a member…</option>
+                  {members.filter((m) => m.role === 'member').map((m) => <option key={m.userId} value={m.userId}>{labels.get(m.userId)}</option>)}
+                </select>
+                <Button variant="secondary" disabled={busy || !transferTo} onClick={() => setConfirmTransfer(true)}>Transfer ownership</Button>
+              </>
+            ) : (
+              <State kind="empty">Invite someone first. Ownership can only be transferred to an existing member.</State>
+            )}
+          </Section>
+        </div>
+      )}
+
+      {isOwner && (
+        <div className="card">
           <Section title="Invite link">
             <p>Create a link and share it with the person you want to invite. It works once and expires in {INVITE_DAYS} days.</p>
             <Button
@@ -143,6 +164,19 @@ export function MembersPanel({ wallet, userId, onLeft }: { wallet: Wallet; userI
         <div className="actions">
           <Button variant="secondary" disabled={busy} onClick={() => setRemoving(null)}>Cancel</Button>
           <Button variant="danger" disabled={busy} onClick={() => act(async () => { await service!.removeMember(wallet.id, removing!); setRemoving(null); await load() })}>Remove member</Button>
+        </div>
+      </Dialog>
+      <Dialog open={confirmTransfer && transferTo !== null} onClose={() => setConfirmTransfer(false)} title={`Transfer ownership to ${transferTo ? labels.get(transferTo) : ''}?`} dismissible={!busy}>
+        <p>{transferTo ? labels.get(transferTo) : ''} will become the Owner. You will become a Member.</p>
+        <div className="actions">
+          <Button variant="secondary" disabled={busy} onClick={() => setConfirmTransfer(false)}>Cancel</Button>
+          <Button
+            variant="danger"
+            disabled={busy}
+            onClick={() => act(async () => { await service!.transferOwnership(wallet.id, transferTo!); setConfirmTransfer(false); setTransferTo(null); onTransferred() })}
+          >
+            Transfer ownership
+          </Button>
         </div>
       </Dialog>
       <Dialog open={leaving} onClose={() => setLeaving(false)} title="Leave wallet?" dismissible={!busy}>

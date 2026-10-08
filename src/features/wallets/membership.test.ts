@@ -113,10 +113,18 @@ describe('membership service', () => {
     await ok.svc.leave('w1')
     await ok.svc.removeMember('w1', 'u1')
     await ok.svc.revokeInvitation('i1')
+    await ok.svc.transferOwnership('w1', 'u2')
     expect(ok.rpc.mock.calls).toEqual([
       ['leave_wallet', { p_wallet_id: 'w1' }],
       ['remove_wallet_member', { p_wallet_id: 'w1', p_user_id: 'u1' }],
       ['revoke_wallet_invitation', { p_invitation_id: 'i1' }],
+      ['transfer_wallet_ownership', { p_wallet_id: 'w1', p_new_owner: 'u2' }],
     ])
+  })
+  it('transferOwnership maps failures to safe messages and never pretends to succeed (network error rejects)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(client({ error: { code: '42501' } }).svc.transferOwnership('w', 'u')).rejects.toThrow('Only the wallet owner can transfer ownership.')
+    await expect(client({ error: { code: 'P0002' } }).svc.transferOwnership('w', 'u')).rejects.toThrow('That person is no longer a member of this wallet.')
+    await expect(client({ error: { message: 'TypeError: Failed to fetch' } }).svc.transferOwnership('w', 'u')).rejects.toThrow('Could not transfer ownership. Please try again.')
   })
 })

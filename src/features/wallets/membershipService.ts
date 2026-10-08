@@ -63,6 +63,18 @@ export function createMembershipService(client: SupabaseClient) {
       const { error } = await client.rpc('remove_wallet_member', { p_wallet_id: walletId, p_user_id: userId })
       if (error) fail('Could not remove the member. Please try again.', error)
     },
+    /** Owner only; the new owner must be a current member. One atomic RPC: there is no client-side role editing and no offline path. */
+    async transferOwnership(walletId: string, newOwnerId: string): Promise<void> {
+      const { error } = await client.rpc('transfer_wallet_ownership', { p_wallet_id: walletId, p_new_owner: newOwnerId })
+      if (error) {
+        fail(
+          error.code === '42501' ? 'Only the wallet owner can transfer ownership.'
+          : error.code === 'P0002' ? 'That person is no longer a member of this wallet.'
+          : 'Could not transfer ownership. Please try again.',
+          error,
+        )
+      }
+    },
     async leave(walletId: string): Promise<void> {
       const { error } = await client.rpc('leave_wallet', { p_wallet_id: walletId })
       if (error) fail(error.code === '42501' ? 'The owner cannot leave a wallet.' : 'Could not leave the wallet. Please try again.', error)

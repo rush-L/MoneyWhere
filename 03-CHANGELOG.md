@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D6 — Ownership transfer (2026-10-08)
+
+Implements `01-APP-SPEC.md` section 6.4. D7 and later are not started. Migration `20261025000000_ownership_transfer.sql` is applied to the DEV project only (`sitlhdkfihzmdzxfrliv`); production untouched.
+
+- **RPC:** `transfer_wallet_ownership(wallet, new_owner)` (`SECURITY DEFINER`, `search_path = ''`, execute revoked from `public`/`anon`). Caller must be the current owner; the target must be a current plain member of that wallet; self-transfer is refused. It locks the owner row and the target row, then demotes and promotes in one transaction (the one-owner unique index is never violated). Only `wallet_members.role` changes. No schema, RLS or grant changes: clients still cannot write `wallet_members`.
+- **Concurrency:** a second transfer by the same owner waits on the row lock, then fails the owner check. Verified on DEV with two simultaneous requests (exactly one wins, one owner remains).
+- **UI:** Members tab, owner only: pick a current member, confirm ("X will become the Owner. You will become a Member."). On success the page switches to the Member view. Online only, no outbox, no optimistic role change.
+- **Tests:** `supabase/tests/ownership_transfer.rls.test.ts` (17: rejections, closed direct writes, privileges, swap, history snapshot unchanged, post-transfer capabilities, stale membership, repeat transfer) and service tests. 455 tests, typecheck, lint, build clean. `supabase/hosted/ownership.verify.ts` passes against DEV (5 tests).
+- **Not verified:** the browser UI (no local Chrome for Playwright; typing credentials into a browser that talks to hosted DEV was not done).
+
 ## Phase D5 — Co-member visibility / Former member (2026-10-08)
 
 Implements `01-APP-SPEC.md` section 6.5. D6 and later are not started. **Migration `20261024000000_co_member_visibility.sql` is tested locally (PGlite) but has NOT been applied to any hosted Supabase project.**
