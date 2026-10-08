@@ -241,14 +241,14 @@ describe('8. anonymous', () => {
 
 describe('9. server-controlled fields', () => {
   it('created_by / paid_by_user_id / wallet_id cannot be spoofed on insert or update', async () => {
-    for (const spoof of [{ created_by: B.id }, { paid_by_user_id: B.id }, { wallet_id: WB }]) {
+    for (const spoof of [{ created_by: B.id }, { wallet_id: WB }]) { // paid_by_user_id is client-selectable since D7 (who_paid.verify.ts)
       const r = await tx(A, accA, catA, spoof)
       expect(r.error, JSON.stringify(spoof)).toBeTruthy()
     }
     const t = await tx(A, accA, catA)
     expect(t.data![0]).toMatchObject({ created_by: A.id, paid_by_user_id: A.id, wallet_id: WA })
     // update goes through the RPC: identity columns in the payload are not whitelisted, so they are ignored (never applied)
-    for (const spoof of [{ created_by: B.id }, { paid_by_user_id: B.id }, { wallet_id: WB }, { id: crypto.randomUUID() }]) await upd(A, t.id, spoof)
+    for (const spoof of [{ created_by: B.id }, { wallet_id: WB }, { id: crypto.randomUUID() }]) await upd(A, t.id, spoof)
     expect((await A.c.from('transactions').select('created_by, paid_by_user_id, wallet_id').eq('id', t.id).single()).data).toEqual({ created_by: A.id, paid_by_user_id: A.id, wallet_id: WA })
     const m = await tx(B, accA, catA) // member's identity is the member, not the owner
     expect(m.data![0]).toMatchObject({ created_by: B.id, paid_by_user_id: B.id })

@@ -163,7 +163,7 @@ describe('apply_transaction_mutation', () => {
     await mutate(B, 'UPDATE', t.id, 1, { ...payload(), created_by: A, wallet_id: crypto.randomUUID(), paid_by_user_id: A, version: 50 })
     const r = await db.query<{ created_by: string; paid_by_user_id: string; wallet_id: string; version: string }>(
       `select created_by, paid_by_user_id, wallet_id, version from public.transactions where id = $1`, [t.id])
-    expect(r.rows[0]).toMatchObject({ created_by: B, paid_by_user_id: B, wallet_id: WA, version: 2 })
+    expect(r.rows[0]).toMatchObject({ created_by: B, paid_by_user_id: A, wallet_id: WA, version: 2 }) // payer A is a current member (D7); the rest cannot be spoofed
     await expect(mutate(B, 'UPDATE', t.id, 2, payload({ amount_minor: 0 }))).rejects.toThrow(/check/)
   })
   it('needs a session, rejects bad ops, and clients cannot write the ledger directly', async () => {

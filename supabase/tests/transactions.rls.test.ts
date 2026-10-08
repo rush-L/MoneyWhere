@@ -102,8 +102,8 @@ describe('transactions: insert', () => {
       expect(t.wallet_id).toBe(WA)
     }
   })
-  it('client cannot set created_by, paid_by_user_id or wallet_id', async () => {
-    for (const col of ['created_by', 'paid_by_user_id', 'wallet_id']) {
+  it('client cannot set created_by or wallet_id (paid_by_user_id is client-selectable since D7: see who_paid.rls.test.ts)', async () => {
+    for (const col of ['created_by', 'wallet_id']) {
       await expect(
         as(B, () =>
           db.query(
@@ -128,12 +128,12 @@ describe('transactions: insert', () => {
     await expect(addTx(A, { date: null })).rejects.toThrow(/null value/)
   })
   it('outsider and anonymous cannot create', async () => {
-    await expect(addTx(C)).rejects.toThrow(/row-level security/)
+    await expect(addTx(C)).rejects.toThrow(/row-level security|payer must be a current member/) // the payer trigger runs before RLS
     await expect(addTx(null)).rejects.toThrow(/permission denied/)
   })
   it('cross-wallet: an account from another wallet is rejected', async () => {
-    await expect(addTx(C, { account_id: accA, category_id: foodC })).rejects.toThrow(/row-level security/)
-    await expect(addTx(A, { account_id: accC, category_id: food })).rejects.toThrow(/row-level security/)
+    await expect(addTx(C, { account_id: accA, category_id: foodC })).rejects.toThrow(/row-level security|payer must be a current member/)
+    await expect(addTx(A, { account_id: accC, category_id: food })).rejects.toThrow(/row-level security|payer must be a current member/)
   })
   it('cross-wallet: a category from another wallet is rejected, even for a member of both', async () => {
     await expect(addTx(A, { category_id: foodC })).rejects.toThrow(/foreign key/)
@@ -214,12 +214,12 @@ describe('transactions: update/delete permissions', () => {
     expect(cols.rows).toHaveLength(0)
     expect(Number((await db.query<{ amount_minor: string }>(`select amount_minor from public.transactions where id = $1`, [t.id])).rows[0]!.amount_minor)).toBe(50000)
   })
-  it('spoofed identity columns in the payload are ignored; moving to another wallet is rejected', async () => {
+  it('spoofed created_by / wallet_id / version in the payload are ignored (paid_by is honoured when a current member, D7); moving to another wallet is rejected', async () => {
     const t = await addTx(B)
     expect(await upd(B, t.id, { created_by: A, paid_by_user_id: A, wallet_id: WC, version: 99, amount_minor: 4242 })).toBe(1)
     const r = (await db.query<{ created_by: string; paid_by_user_id: string; wallet_id: string; amount_minor: string; version: string }>(
       `select created_by, paid_by_user_id, wallet_id, amount_minor, version from public.transactions where id = $1`, [t.id])).rows[0]!
-    expect(r).toMatchObject({ created_by: B, paid_by_user_id: B, wallet_id: WA, version: 2 })
+    expect(r).toMatchObject({ created_by: B, paid_by_user_id: A, wallet_id: WA, version: 2 }) // A is a current member, so a valid payer
     expect(Number(r.amount_minor)).toBe(4242)
     await expect(upd(B, t.id, { account_id: accC })).rejects.toThrow(/row-level security|foreign key|cannot move between wallets/)
   })
@@ -323,7 +323,7 @@ describe('transfers', () => {
     }
   })
   it('client cannot spoof wallet_id, created_by or paid_by_user_id', async () => {
-    for (const [col, v] of [['wallet_id', WA], ['created_by', A], ['paid_by_user_id', A]] as const)
+    for (const [col, v] of [['wallet_id', WA], ['created_by', A]] as const)
       await expect(raw(B, `account_id, destination_account_id, ${col}`, [accA, accA2, v])).rejects.toThrow(/permission denied/)
   })
   it('owner edits/deletes any; member only their own', async () => {

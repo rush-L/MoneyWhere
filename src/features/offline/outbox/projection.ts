@@ -6,12 +6,12 @@ import type { OutboxItem, OutboxStatus } from './outbox'
 /** A transaction row as shown locally; `sync` is set only while the server has not confirmed it. */
 export type LocalTransaction = TransactionRow & { sync?: Exclude<OutboxStatus, 'SYNCED'> }
 
-/** A pending CREATE as a row. created_by/paid_by here are display-only (the item's owner); the database sets the real ones. */
+/** A pending CREATE as a row. created_by is display-only (the item's owner); paid_by is the chosen payer, else the owner. The database sets the real ones. */
 export const itemToRow = (i: OutboxItem): LocalTransaction => ({
   id: i.id,
   ...i.payload!,
   created_by: i.user_id,
-  paid_by_user_id: i.payload!.type === 'transfer' ? null : i.user_id,
+  paid_by_user_id: i.payload!.type === 'transfer' ? null : (i.payload!.paid_by_user_id ?? i.user_id),
   sync: i.status === 'SYNCED' ? undefined : i.status,
 })
 
@@ -57,7 +57,12 @@ export function pendingEffect(server: readonly Ref[], items: readonly OutboxItem
     }
     out.superseded.push(row)
     if (op === 'DELETE') out.deleted.add(i.id)
-    else out.overlaid.set(i.id, { ...row, ...i.payload!, sync: i.status === 'SYNCED' ? undefined : i.status })
+    else {
+      const p = i.payload!
+      // No payer in the payload (queued before D7, or "keep") keeps the row's payer; a transfer has none.
+      const paid = p.type === 'transfer' ? null : (p.paid_by_user_id ?? row.paid_by_user_id ?? row.created_by)
+      out.overlaid.set(i.id, { ...row, ...p, paid_by_user_id: paid, sync: i.status === 'SYNCED' ? undefined : i.status })
+    }
   }
   return out
 }

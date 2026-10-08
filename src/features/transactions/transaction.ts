@@ -22,6 +22,8 @@ export interface TransactionInput {
   amount: string
   date: string
   note: string
+  /** Who paid (expense) / received (income). Empty = the server's default: the creator on create, unchanged on edit. Ignored for transfers. */
+  paidByUserId?: string
 }
 
 export interface NewTransaction {
@@ -32,6 +34,8 @@ export interface NewTransaction {
   amount_minor: Minor
   date: string
   note: string | null
+  /** Who paid / received. null = server default; always null for a transfer. Optional: outbox items queued before D7 have none. */
+  paid_by_user_id?: string | null
 }
 
 const isRealDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s
@@ -56,7 +60,7 @@ export function parseTransaction(i: TransactionInput): { ok: true; value: NewTra
   if (note && note.length > 500) return { ok: false, error: 'Note must be 500 characters or fewer.' }
   return {
     ok: true,
-    value: { type: i.type, account_id: i.accountId, destination_account_id: transfer ? i.destinationAccountId : null, category_id: i.type === 'expense' ? i.categoryId : null, amount_minor, date: i.date, note },
+    value: { type: i.type, account_id: i.accountId, destination_account_id: transfer ? i.destinationAccountId : null, category_id: i.type === 'expense' ? i.categoryId : null, amount_minor, date: i.date, note, paid_by_user_id: transfer ? null : i.paidByUserId || null },
   }
 }
 

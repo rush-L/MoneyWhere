@@ -11,7 +11,7 @@ describe('parseTransaction', () => {
   it('stores a positive integer in minor units', () => {
     expect(parseTransaction(ok)).toEqual({
       ok: true,
-      value: { type: 'expense', account_id: 'a', destination_account_id: null, category_id: 'c', amount_minor: 50000, date: '2026-10-10', note: null },
+      value: { type: 'expense', account_id: 'a', destination_account_id: null, category_id: 'c', amount_minor: 50000, date: '2026-10-10', note: null, paid_by_user_id: null },
     })
   })
   it('income drops any category', () =>
@@ -48,5 +48,25 @@ describe('helpers', () => {
     expect(canManage(true, { created_by: 'x' }, 'me')).toBe(true)
     expect(canManage(false, { created_by: 'me' }, 'me')).toBe(true)
     expect(canManage(false, { created_by: 'x' }, 'me')).toBe(false)
+  })
+})
+
+describe('parseTransaction: Who Paid / Received by (D7)', () => {
+  const paid = (o: Partial<Parameters<typeof parseTransaction>[0]>) => {
+    const r = parseTransaction({ ...ok, ...o })
+    return r.ok ? r.value.paid_by_user_id : 'INVALID'
+  }
+  it('expense and income carry the chosen member; none chosen means null (the server defaults to the creator)', () => {
+    expect(paid({ paidByUserId: 'bella' })).toBe('bella')
+    expect(paid({ type: 'income', paidByUserId: 'bella' })).toBe('bella')
+    expect(paid({})).toBeNull()
+    expect(paid({ paidByUserId: '' })).toBeNull()
+  })
+  it('a transfer never has a payer or recipient, even if one is passed', () => {
+    expect(paid({ type: 'transfer', destinationAccountId: 'b', categoryId: '', paidByUserId: 'bella' })).toBeNull()
+  })
+  it('never emits created_by', () => {
+    const r = parseTransaction({ ...ok, paidByUserId: 'bella' })
+    expect(r.ok && 'created_by' in r.value).toBe(false)
   })
 })

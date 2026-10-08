@@ -343,7 +343,9 @@ These are independent fields.
 - `paid_by_user_id` applies to income and expense. It is displayed as **Who Paid** for an expense and **Received by** for income.
 - Default payer/recipient = the creator. The creator may select any **current member** of the wallet.
 - The server validates that a selected payer is a current member whenever the payer is set or **changed**. An edit that leaves the payer unchanged is allowed even if that payer has since left.
-- **Transfers have no payer.**
+- **Transfers have no payer or recipient.** The field is not shown for transfers and is stored as NULL.
+- Changing the payer/recipient never changes `created_by`. Example: Alice records an expense with Who Paid = Bella gives `created_by` = Alice, `paid_by_user_id` = Bella.
+- Offline, only the signed-in user is offered in the selector (the member list is not cached); an edited transaction keeps its stored payer. The server validates when the queued item syncs.
 - A payer who is no longer a member is displayed as **Former member** (section 6.5).
 
 ## 9.2 Search and filters

@@ -52,3 +52,31 @@ describe('local projection', () => {
     expect(reconcile(new Map([['acc1', 100], ['acc2', 5]]), [acct('acc1', 100), acct('acc2', 6)])).toEqual([{ accountId: 'acc2', expected: 5, server: 6 }])
   })
 })
+
+describe('who paid / received by (D7)', () => {
+  const upd = (payload: ReturnType<typeof expense>, base: TransactionRow): OutboxItem =>
+    ({ ...item(base.id, payload), op: 'UPDATE', expected_version: 1, mutation_id: 'm', base: { ...base, version: 1 } })
+  it('a pending create shows the chosen payer, not the creator; created_by stays the creator', () => {
+    const [p] = mergeLocal([], [item('p', expense({ paid_by_user_id: 'B' }))], 'w1')
+    expect(p).toMatchObject({ created_by: 'A', paid_by_user_id: 'B' })
+  })
+  it('a pending create without a payer (queued before D7) shows the owner; a transfer has none', () => {
+    expect(mergeLocal([], [item('p')], 'w1')[0]!.paid_by_user_id).toBe('A')
+    const t = expense({ type: 'transfer', account_id: 'acc1', destination_account_id: 'acc2', category_id: null, paid_by_user_id: 'B' })
+    expect(mergeLocal([], [item('t', t)], 'w1')[0]!.paid_by_user_id).toBeNull()
+  })
+  it('a pending edit overlays the new payer and never touches created_by', () => {
+    const [r] = mergeLocal([{ ...srv('s'), version: 1, paid_by_user_id: 'B' }], [upd(expense({ paid_by_user_id: 'C' }), srv('s'))], 'w1')
+    expect(r).toMatchObject({ created_by: 'A', paid_by_user_id: 'C' })
+  })
+  it('a pending edit with no payer keeps the stored one (a former member stays as it was)', () => {
+    const [r] = mergeLocal([{ ...srv('s'), version: 1, paid_by_user_id: 'gone' }], [upd(expense(), { ...srv('s'), paid_by_user_id: 'gone' })], 'w1')
+    expect(r!.paid_by_user_id).toBe('gone')
+  })
+  it('payer attribution does not change balances', () => {
+    const a = localBalances([acct('acc1', 1000)], [], [item('e', expense({ amount_minor: 300 }))], 'w1')[0]!.currentBalanceMinor
+    const b = localBalances([acct('acc1', 1000)], [], [item('e', expense({ amount_minor: 300, paid_by_user_id: 'B' }))], 'w1')[0]!.currentBalanceMinor
+    expect(b).toBe(a)
+  })
+})
+

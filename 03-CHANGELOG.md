@@ -2,6 +2,19 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D7 — Who Paid / Received by (2026-10-08)
+
+Implements `01-APP-SPEC.md` section 9.1. D8 and later are not started. Migration `20261026000000_who_paid.sql` is applied to the DEV project only (`sitlhdkfihzmdzxfrliv`); production untouched.
+
+- **Before D7:** `paid_by_user_id` was stored but forced to the creator by trigger; the UI only printed "Paid by: Me".
+- **UI:** Expense create/edit shows **Who Paid**, Income shows **Received by** (a select of current members, "You" first and selected by default). Transfers show neither. The list reads "Paid by: X" (expense) / "Received by: X" (income), resolved through the D5 member list, so a payer who has left shows **Former member**. An edit keeps a departed payer as "Former member" rather than reassigning it.
+- **Database:** `paid_by_user_id` is now insertable. `transactions_set_owner` validates it on every write path (direct insert and `apply_transaction_mutation`): when set or changed it must be a current member of the transaction's own wallet (derived from the account), otherwise `42501`. An unchanged historical payer is not re-validated, so editing an old transaction does not rewrite history; assigning a former member is always refused. Transfers force NULL. `created_by` is still set by the database only. `apply_transaction_mutation` now reads `paid_by_user_id` from the payload (absent keeps the stored one, so edits queued before D7 stay valid). The version trigger now counts a payer change as a change.
+- **Offline:** the outbox payload carries `paid_by_user_id`; the local projection shows the chosen payer. No new offline infrastructure; offline the selector offers only "You".
+- **Tests changed:** assertions that "paid_by_user_id cannot be set" (local and hosted) now assert the D7 rule instead; outsider inserts are rejected by the payer trigger before RLS (message differs, still rejected).
+- **Tests added:** `supabase/tests/who_paid.rls.test.ts`, parse/projection unit tests, `supabase/hosted/who_paid.verify.ts` (15 tests, passing on DEV). Dashboard and budget code untouched.
+
+- **Verification status:** implementation complete. Local: 493 tests, typecheck, lint, build pass. Hosted DEV: 37/37 checks pass (`who_paid`, `transactions`, `transfers` suites); the DEV test data was removed afterwards. **Not verified:** the browser smoke test (Expense/Income/Transfer forms, former-member display) and the offline runtime smoke test were not completed, because signing in to hosted DEV needs a human-entered password. No production verification is claimed.
+
 ## Phase D6 — Ownership transfer (2026-10-08)
 
 Implements `01-APP-SPEC.md` section 6.4. D7 and later are not started. Migration `20261025000000_ownership_transfer.sql` is applied to the DEV project only (`sitlhdkfihzmdzxfrliv`); production untouched.

@@ -151,7 +151,7 @@ describe('transfers on the hosted project', () => {
     expect(await count(C)).toBe(0)
   })
   it('spoofing wallet_id / created_by / paid_by_user_id is rejected', async () => {
-    for (const [k, v] of [['wallet_id', WA], ['created_by', A.id], ['paid_by_user_id', A.id]] as const) {
+    for (const [k, v] of [['wallet_id', WA], ['created_by', A.id]] as const) { // paid_by_user_id is ignored on transfers since D7 (who_paid.verify.ts)
       const r = await xfer(B, bpi, gcash, { amount_minor: 100, [k]: v })
       expect(r.error, k).not.toBeNull()
     }

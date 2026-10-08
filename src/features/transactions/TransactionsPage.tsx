@@ -23,7 +23,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { State } from '../../ui/State'
 
 type TxSnapshot = { list: TransactionRow[]; accs: Account[]; cats: Category[] }
-const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '' })
+const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '', paidByUserId: '' }) // paidByUserId '' = the signed-in user
 
 export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: string }) {
   const txService = useMemo(() => (supabase ? createTransactionService(supabase) : null), [])
@@ -113,9 +113,14 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
   const categoryName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'Unknown category') : '—')
   const set = (k: keyof ReturnType<typeof blank>) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
 
+  // Who Paid / Received by: current members only (the server enforces it). An edited row whose payer has since left keeps
+  // that value as "Former member" so saving does not silently reassign it; offline (no member list) only "You" is offered.
+  const payerId = form.paidByUserId || userId
+  const payerIds = [...new Set([userId, ...(labels?.keys() ?? []), payerId])]
+
   async function save(ev: FormEvent) {
     ev.preventDefault()
-    const parsed = parseTransaction(form)
+    const parsed = parseTransaction({ ...form, paidByUserId: payerId })
     if (!parsed.ok) return setFormError(parsed.error)
     setBusy(true)
     setFormError(null)
@@ -157,7 +162,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
     setEditing(t)
     setFormError(null)
     setFormOpen(true)
-    setForm({ type: t.type, accountId: t.account_id, destinationAccountId: t.destination_account_id ?? '', categoryId: t.category_id ?? '', amount: formatMinor(t.amount_minor), date: t.date, note: t.note ?? '' })
+    setForm({ type: t.type, accountId: t.account_id, destinationAccountId: t.destination_account_id ?? '', categoryId: t.category_id ?? '', amount: formatMinor(t.amount_minor), date: t.date, note: t.note ?? '', paidByUserId: t.paid_by_user_id ?? '' })
   }
   function cancelEdit() {
     setEditing(null)
@@ -220,7 +225,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
                 {t.type === 'transfer' ? (
                   <small>↔ {accountName(t.account_id)} → {accountName(t.destination_account_id ?? '')}</small>
                 ) : (
-                  <small>{accountName(t.account_id)} · {categoryName(t.category_id)} · Paid by: {paidBy(t)}</small>
+                  <small>{accountName(t.account_id)} · {categoryName(t.category_id)} · {t.type === 'income' ? 'Received by' : 'Paid by'}: {paidBy(t)}</small>
                 )}
                 {t.note && <small>{t.note}</small>}
                 {t.sync && (() => {
@@ -304,7 +309,13 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
               <input type="date" value={form.date} onChange={set('date')} disabled={busy} />
             </Field>
             <Field label="Note (optional)"><input value={form.note} maxLength={500} onChange={set('note')} disabled={busy} /></Field>
-            {!transfer && <small>Paid by: Me</small>}
+            {!transfer && (
+              <Field label={form.type === 'income' ? 'Received by' : 'Who Paid'}>
+                <select value={payerId} onChange={set('paidByUserId')} disabled={busy}>
+                  {payerIds.map((id) => <option key={id} value={id}>{participantLabel(id, userId, labels)}</option>)}
+                </select>
+              </Field>
+            )}
             {formError && <p role="alert" className="error">{formError}</p>}
             <Button type="submit" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save Changes' : transfer ? 'Add Transfer' : 'Add Transaction'}</Button>
           </form>
