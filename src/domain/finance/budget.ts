@@ -76,7 +76,8 @@ export interface BudgetSummary {
   totalSpent: Minor
   /** The part of totalSpent that falls in categories with a budget (subcategories roll up to their budgeted parent). */
   budgetedSpent: Minor
-  totalRemaining: Minor // negative when over
+  /** Budget capacity left: totalBudgeted - budgetedSpent (unbudgeted spending never reduces it). Negative when over. */
+  totalRemaining: Minor
   /** Every budget with its status, most urgent first: highest percentUsed (so over-budget first), then larger overage, then id. */
   lines: BudgetLine[]
 }
@@ -97,5 +98,5 @@ export function summarizeBudgets(
   const lines = budgets
     .map((b) => ({ categoryId: b.categoryId, ...calculateBudgetStatus(b.amountMinor, spentByCategory.get(b.categoryId) ?? 0) }))
     .sort((a, b) => b.percentUsed - a.percentUsed || a.remaining - b.remaining || a.categoryId.localeCompare(b.categoryId))
-  return { totalBudgeted, totalSpent, budgetedSpent, totalRemaining: sub(totalBudgeted, totalSpent), lines }
+  return { totalBudgeted, totalSpent, budgetedSpent, totalRemaining: sub(totalBudgeted, budgetedSpent), lines }
 }

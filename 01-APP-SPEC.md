@@ -465,10 +465,11 @@ Display:
 - **Monthly Income**: the sum of all income transactions in the month
 - **Total Spent**: the sum of **all** expense transactions in the month, whether or not their category has a budget
 - **Budgeted Spent**: the part of spending that falls in categories that have a budget
+- **Total Remaining**: `Total Budgeted - Budgeted Spent`. This is budget capacity left, not cash on hand: unbudgeted expenses do not reduce it (they still count in Total Spent and in the account balances). It is negative when budgets are exceeded.
 
 Transfers are excluded from both income and spending.
 
-Change note: the dashboard's single "Spent" figure already summed every expense in the month; it is now labelled **Total Spent**, and **Budgeted Spent** and **Monthly Income** are new separate figures (Phase D3). The hero "Remaining" figure is unchanged: total budgeted minus Total Spent (see `03-CHANGELOG.md`, Phase D3, for the open question on that definition).
+Change note: the dashboard's single "Spent" figure already summed every expense in the month; it is now labelled **Total Spent**, and **Budgeted Spent** and **Monthly Income** are new separate figures (Phase D3). The hero "Remaining" figure is Total Remaining as defined above.
 
 **Deferred** dashboard items (section 25): Net Worth, upcoming recurring transactions, planned purchases, reserved funds, and an "available to spend" figure.
 

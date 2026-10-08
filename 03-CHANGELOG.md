@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D3 follow-up — Total Remaining definition (2026-10-08)
+
+Resolves the open question recorded in the Phase D3 entry. Only the dashboard Remaining metric changed; no schema, RLS, RPC, Auth or Vercel change, and D4 and later are not started.
+
+- **Definition:** Total Remaining = Total Budgeted - Budgeted Spent (budget capacity left, not cash on hand). It was Total Budgeted - Total Spent, so unbudgeted expenses wrongly consumed budget. They still count in Total Spent and in the account balances.
+- **Code:** `summarizeBudgets` (`src/domain/finance/budget.ts`) computes `totalRemaining` from `budgetedSpent`. Total Spent, Budgeted Spent, Monthly Income, Total Balance, Total Budgeted, per-budget lines and the D2 thresholds are unchanged. Negative values (budgets exceeded) display as before ("Over budget by ...").
+- **Spec:** section 13 now defines Total Remaining; the D3 open-question pointer was replaced.
+- **Tests:** unbudgeted spending leaves 8,000 remaining; 2,000 budgeted + 1,000 unbudgeted leaves 6,000; fully budgeted spending leaves 0; 9,000 against 8,000 gives -1,000; no budget gives 0 with unbudgeted spending.
+- **Verified:** 360 tests, typecheck, lint and build pass.
+
 ## Phase D3 — Dashboard metrics (2026-10-08)
 
 Implements the dashboard metric definitions in `01-APP-SPEC.md` section 13. No schema, RLS, RPC, Auth or Vercel change; D4 and later are not started; D2 threshold behavior is untouched.

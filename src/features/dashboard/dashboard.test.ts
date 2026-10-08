@@ -119,6 +119,28 @@ describe('dashboard metrics: Total Spent vs Budgeted Spent vs Monthly Income', (
   })
 })
 
+describe('Total Remaining = Total Budgeted - Budgeted Spent', () => {
+  const remaining = (budgeted: number, spend: ReturnType<typeof exp>[]) => {
+    const d = buildDashboard({ month: M, categories: cats, accounts: [], budgets: budgeted ? [bud('food', budgeted)] : [], spend })
+    return { remaining: d.totalRemaining, spent: d.totalSpent, budgetedSpent: d.budgetedSpent, over: d.totalRemaining < 0 }
+  }
+  it('case 1: unbudgeted spending does not reduce remaining', () => {
+    expect(remaining(800000, [exp('bills', 200000)])).toMatchObject({ remaining: 800000, spent: 200000, budgetedSpent: 0 })
+  })
+  it('case 2: budgeted spending reduces remaining; unbudgeted does not', () => {
+    expect(remaining(800000, [exp('groceries', 200000), exp('bills', 100000)])).toMatchObject({ remaining: 600000, spent: 300000, budgetedSpent: 200000 })
+  })
+  it('case 3: all spending budgeted leaves zero', () => {
+    expect(remaining(800000, [exp('groceries', 500000), exp('coffee', 300000)])).toMatchObject({ remaining: 0, spent: 800000, over: false })
+  })
+  it('case 4: budget exceeded gives negative remaining', () => {
+    expect(remaining(800000, [exp('food', 900000)])).toMatchObject({ remaining: -100000, over: true })
+  })
+  it('case 5: no budget means zero remaining, whatever is spent', () => {
+    expect(remaining(0, [exp('bills', 300000)])).toMatchObject({ remaining: 0, spent: 300000, budgetedSpent: 0 })
+  })
+})
+
 describe('current month and wallet selection', () => {
   it('month is the local calendar month, first day, regardless of time of day', () => {
     expect(currentMonth(new Date(2026, 9, 1, 0, 0))).toBe('2026-10-01')
