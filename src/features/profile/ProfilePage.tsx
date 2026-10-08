@@ -8,6 +8,7 @@ import { Field } from '../../ui/Field'
 import { PageHeader } from '../../ui/PageHeader'
 import { Section } from '../../ui/Section'
 import { State } from '../../ui/State'
+import { ExportSection } from '../export/ExportSection'
 
 export function ProfilePage({ userId, email }: { userId: string; email: string | undefined }) {
   const service = useMemo(() => (supabase ? createProfileService(supabase) : null), [])
@@ -82,6 +83,9 @@ export function ProfilePage({ userId, email }: { userId: string; email: string |
             <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
           </form>
         </Section>
+      </div>
+      <div className="card">
+        <ExportSection userId={userId} />
       </div>
       <div className="card">
         <Section title="Session">

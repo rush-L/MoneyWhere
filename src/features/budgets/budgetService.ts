@@ -41,6 +41,23 @@ export function createBudgetService(client: SupabaseClient) {
       if (error) fail('Could not load budgets. Please try again.', error)
       return data.map(budgetFromRow)
     },
+    /** Every budget of the wallet, all months (data export). Paged like the other lists; RLS limits rows to members. */
+    async listAll(walletId: string): Promise<Budget[]> {
+      const all: Budget[] = []
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await client
+          .from('budgets')
+          .select(BUDGET_COLUMNS)
+          .eq('wallet_id', walletId)
+          .order('month')
+          .order('id')
+          .range(from, from + PAGE - 1)
+          .returns<BudgetRow[]>()
+        if (error) fail('Could not load budgets. Please try again.', error)
+        all.push(...data.map(budgetFromRow))
+        if (data.length < PAGE) return all
+      }
+    },
     /**
      * Expenses of one wallet in one month, four columns only, filtered by the database (never the whole history).
      * ponytail: rolled up client-side by spendingByBudgetCategory; move to a SQL aggregate when a month's expense

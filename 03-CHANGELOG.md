@@ -2,6 +2,22 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D10 — Data export (2026-10-08)
+
+Implements `01-APP-SPEC.md` section 17.1. Built before D9 (account deletion) because D9 must offer a real export first. Client-only: no migration, RPC, RLS or grant change. Not deployed or verified in production yet; D9 is not started.
+
+- **Modules (`src/features/export/`):** `dataExport.ts` is pure (no React, no network, no Supabase): `buildExport(data)` plus `exportFilename`. Every output object is built field by field, so nothing that is not named (an email, a co-member's avatar, a token, the outbox, the internal `version`) can reach the file. `exportService.ts` (`loadExport`) reads through the existing services as the signed-in user (profile, wallets, `list_wallet_members`, `account_summaries`, categories, budgets, transactions), wallet after wallet, and fails the whole export on any failed read (never a partial file). `ExportSection.tsx` is the button on Profile.
+- **One read added:** `budgetService.listAll(walletId)` (all months, paged). Everything else reuses existing reads.
+- **Schema 1:** `schema_version`, `app`, `exported_at` (UTC), `exported_by`, `notes`, `counts`, `profile` (`display_name`, `avatar_url`), `wallets[]` each with `your_role`, `members` (`user_id`, `display_name`, `role`), `accounts` (with `balance: { amount_minor, currency, derived: true }`, the same `account_summaries` figure the app shows), `categories` (`parent_id` kept), `budgets` (`YYYY-MM-01`) and `transactions`. Amounts are integer minor units, with a currency on accounts, budgets and transactions.
+- **Former members:** a creator or payer who is not a current member of that wallet is exported as `null` with the label `"Former member"`; the raw id is never written. Membership is judged per wallet. A transfer's payer is `null` with no label. Current member ids are exported.
+- **Shared wallets:** includes other current members' transactions (the user can already read them); an envelope note says so. No emails, avatars of others, invitations or auth data.
+- **Offline:** online only. The button is disabled offline; the file never comes from IndexedDB. If the outbox has items while online, export stays available with a warning that pending changes are not included, and they are not merged in.
+- **Paging:** transactions and budgets are read in 1000-row pages, so exports are complete beyond the cap. The export is not a database snapshot; `exported_at` is when it was assembled.
+- **Download:** `Blob` + anchor, `moneywhere-export-YYYY-MM-DD.json`. Nothing is uploaded anywhere.
+- **Tests:** `dataExport.test.ts` (envelope, exact key shapes, money, former members, transfer, per-wallet membership, privacy exclusions with hostile input), `exportService.test.ts` (2,500 transactions and 1,200 budgets complete, exactly-1000 boundary, progress, failure), `supabase/tests/export.rls.test.ts` (the loader's reads return nothing from a wallet the user is not in, no co-member email).
+- **DEV browser verification** (local app against DEV `sitlhdkfihzmdzxfrliv`): Export on Profile; file name `moneywhere-export-2026-10-08.json`; envelope and counts match; the former-member transactions export as `null` / `"Former member"`; the transfer has a null payer; derived balances add up to the Dashboard total; no email in the file; button disabled offline with the connection message; the unsynced-change warning shows. Not verified in the browser: a pending item while online (the queue synced within milliseconds on reconnect), the final file landing on disk (the automated browser left the download as a temporary file), a shared wallet with a second user, and more than 1000 rows (unit-tested instead).
+- **Leftover DEV data:** one 1.00 transaction with the note `d10 pending test` on the DEV wallet `test`, created offline for the pending-change check.
+
 ## Phase D8 — Transaction search and filters (2026-10-08)
 
 Implements `01-APP-SPEC.md` section 9.2. Client-only: no migration, RLS, RPC or D4–D7 change. D9 and later are not started.
