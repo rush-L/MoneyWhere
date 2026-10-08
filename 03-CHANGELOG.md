@@ -13,7 +13,7 @@ Implements `01-APP-SPEC.md` section 9.1. D8 and later are not started. Migration
 - **Tests changed:** assertions that "paid_by_user_id cannot be set" (local and hosted) now assert the D7 rule instead; outsider inserts are rejected by the payer trigger before RLS (message differs, still rejected).
 - **Tests added:** `supabase/tests/who_paid.rls.test.ts`, parse/projection unit tests, `supabase/hosted/who_paid.verify.ts` (15 tests, passing on DEV). Dashboard and budget code untouched.
 
-- **Verification status:** implementation complete. Local: 493 tests, typecheck, lint, build pass. Hosted DEV: 37/37 checks pass (`who_paid`, `transactions`, `transfers` suites); the DEV test data was removed afterwards. **Not verified:** the browser smoke test (Expense/Income/Transfer forms, former-member display) and the offline runtime smoke test were not completed, because signing in to hosted DEV needs a human-entered password. No production verification is claimed.
+- **Verification status:** implementation complete. Local: 493 tests, typecheck, lint, build pass. Hosted DEV: 37/37 checks pass (`who_paid`, `transactions`, `transfers` suites); the DEV test data was removed afterwards. **Manual smoke tests (2026-10-08, run by the project owner against DEV, reported as passed or as expected):** browser (Expense/Income/Transfer forms, payer in list, former-member display) and offline runtime. These were run by a human; the automated agent could not sign in. No production verification is claimed.
 
 ## Phase D6 — Ownership transfer (2026-10-08)
 
