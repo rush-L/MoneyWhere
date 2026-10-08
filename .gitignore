@@ -6,3 +6,5 @@ dist
 *.local
 supabase/.temp
 .vercel/
+
+moneywhere-export-*.json
