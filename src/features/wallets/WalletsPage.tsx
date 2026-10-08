@@ -7,6 +7,7 @@ import { CategoriesPage } from '../categories/CategoriesPage'
 import { TransactionsPage } from '../transactions/TransactionsPage'
 import { readThrough, walletsKey, type ReadResult } from '../offline/db/cache'
 import { useOffline } from '../offline/hooks/OfflineProvider'
+import { MembersPanel } from './MembersPanel'
 import { createWalletService } from './walletService'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
@@ -20,6 +21,7 @@ const SECTIONS = [
   ['accounts', 'Accounts'],
   ['categories', 'Categories'],
   ['budgets', 'Budgets'],
+  ['members', 'Members'],
 ] as const
 
 export function WalletsPage({ userId }: { userId: string }) {
@@ -30,7 +32,7 @@ export function WalletsPage({ userId }: { userId: string }) {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<{ wallet: Wallet; page: 'accounts' | 'categories' | 'transactions' | 'budgets' } | null>(null)
+  const [selected, setSelected] = useState<{ wallet: Wallet; page: 'accounts' | 'categories' | 'transactions' | 'budgets' | 'members' } | null>(null)
 
   const load = useCallback(
     (initial = false) => {
@@ -74,6 +76,7 @@ export function WalletsPage({ userId }: { userId: string }) {
       selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} />
       : selected.page === 'budgets' ? <BudgetsPage wallet={wallet} userId={userId} />
       : selected.page === 'accounts' ? <AccountsPage wallet={wallet} userId={userId} />
+      : selected.page === 'members' ? <MembersPanel wallet={wallet} userId={userId} onLeft={() => { setSelected(null); void load() }} />
       : <CategoriesPage wallet={wallet} userId={userId} />
     return (
       <div className="wallet-shell">

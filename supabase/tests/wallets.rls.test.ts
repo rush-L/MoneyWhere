@@ -48,7 +48,7 @@ beforeAll(async () => {
   for (const u of [A, B, C]) await db.query(`insert into auth.users (id) values ($1)`, [u])
   WA = await createWallet(A, 'Household')
   WC = await createWallet(C, 'Private')
-  // Simulate an accepted invitation (invitations are a later phase): B joins WA as member.
+  // Simulate an accepted invitation (the invitation flow itself is tested in membership.rls.test.ts): B joins WA as member.
   await db.query(`insert into public.wallet_members (wallet_id, user_id, role) values ($1, $2, 'member')`, [WA, B])
 })
 
@@ -108,14 +108,14 @@ describe('owner vs member permissions', () => {
     expect((await as(C, () => db.query(`update public.wallets set name = 'Hacked' where id = $1`, [WA]))).affectedRows).toBe(0)
     expect((await as(C, () => db.query('delete from public.wallets where id = $1', [WA]))).affectedRows).toBe(0)
   })
-  it('member cannot remove other members', async () => {
-    expect((await as(B, () => db.query('delete from public.wallet_members where wallet_id = $1 and user_id = $2', [WA, A]))).affectedRows).toBe(0)
+  it('nobody can delete memberships directly (remove / leave are RPCs, see membership.rls.test.ts)', async () => {
+    for (const uid of [A, B, C]) {
+      await expect(as(uid, () => db.query('delete from public.wallet_members where wallet_id = $1 and user_id = $2', [WA, B]))).rejects.toThrow(/permission denied/)
+    }
   })
-  it('owner cannot leave via membership delete', async () => {
-    expect((await as(A, () => db.query('delete from public.wallet_members where wallet_id = $1 and user_id = $2', [WA, A]))).affectedRows).toBe(0)
-  })
-  it('member can leave and then loses access', async () => {
-    expect((await as(B, () => db.query('delete from public.wallet_members where wallet_id = $1 and user_id = $2', [WA, B]))).affectedRows).toBe(1)
+  it('owner cannot leave; a member can leave and then loses access', async () => {
+    await expect(as(A, () => db.query('select public.leave_wallet($1)', [WA]))).rejects.toThrow(/owner cannot leave/)
+    await as(B, () => db.query('select public.leave_wallet($1)', [WA]))
     expect((await as(B, () => db.query('select 1 from public.wallets where id = $1', [WA]))).rows).toHaveLength(0)
   })
   it('owner can delete the wallet; memberships cascade', async () => {
