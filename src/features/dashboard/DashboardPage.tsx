@@ -150,7 +150,7 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
                   <div className="attention-head"><strong>{l.name}</strong><span>{Math.round(l.percentUsed)}%</span></div>
                   <Meter percent={l.percentUsed} over={l.over} label={`${l.name} budget used`} />
                   <div><Money minor={l.spent} /> / <Money minor={l.budget} /></div>
-                  {l.over ? <span role="alert" className="error">⚠ Over budget by <Money minor={-l.remaining} /></span> : <small><Money minor={l.remaining} /> remaining</small>}
+                  {l.over ? <span role="alert" className="error">{l.remaining === 0 ? '⚠ Budget fully used' : <>⚠ Over budget by <Money minor={-l.remaining} /></>}</span> : <small><Money minor={l.remaining} /> remaining</small>}
                 </li>
               ))}
             </ul>

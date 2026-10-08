@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D2 — Budget threshold semantics (2026-10-08)
+
+Implements the budget-status contract in `01-APP-SPEC.md` section 12. No schema, RLS, RPC, Auth, Vercel, dashboard-metric or offline change; D3 and later are not started.
+
+- **Behavior:** `calculateBudgetStatus` (`src/domain/finance/budget.ts`, the single source) now classifies usage as `normal` below 80%, `warning` from 80% to below 100%, and `exceeded` at 100% or more. Exactly 100% is Exceeded: `over` changed from `spent > budget` to `spent >= budget`. The warning boundary is exactly 80%.
+- **Added:** a `status` field (`'normal' | 'warning' | 'exceeded'`) on `BudgetStatus`; `over` is kept and equals `status === 'exceeded'`. Thresholds use exact integer (BigInt) comparison, not the float `percentUsed`, so boundaries cannot drift. `percentUsed` and money handling are unchanged.
+- **UI:** unchanged structure. Because exactly 100% is now Exceeded with 0 remaining, the Budgets and Dashboard lines read "Budget fully used" instead of "Over budget by ₱0.00" in that case. There was no warning state in the code before, and no warning visual was added (not part of D2).
+- **Tests:** table-driven boundary tests (0%, 79%, 79.99%, exactly 80%, 99%, 99.99%, exactly 100%, over 100%), non-divisible budgets, and a large-integer case. The old "exact limit is not over" assertions (domain and dashboard) were reversed to match the contract.
+- **Verified:** 341 tests, typecheck, lint and build pass.
+
 ## Phase D0 — Core product contract finalized (2026-10-08)
 
 Documentation and specification only. **Nothing in this entry is implemented.** No application code, database schema, migration, RLS, RPC, Supabase, Auth or Vercel change. Phase D implementation (D2 onward) has not started.

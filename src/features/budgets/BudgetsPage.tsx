@@ -112,7 +112,7 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
         <div><Money minor={s.spent} /> / <Money minor={s.budget} /></div>
         <div>
           {s.over ? (
-            <span role="alert" className="error">Over budget by <Money minor={-s.remaining} /></span>
+            <span role="alert" className="error">{s.remaining === 0 ? 'Budget fully used' : <>Over budget by <Money minor={-s.remaining} /></>}</span>
           ) : (
             <><Money minor={s.remaining} /> remaining</>
           )}

@@ -21,10 +21,10 @@ describe('summarizeBudgets', () => {
   it('zero budgets and zero spending', () => {
     expect(summarizeBudgets([], new Map())).toEqual({ totalBudgeted: 0, totalSpent: 0, totalRemaining: 0, lines: [] })
   })
-  it('exact budget is not over', () => {
+  it('exact budget is exceeded', () => {
     const s = summarizeBudgets([{ categoryId: 'a', amountMinor: 100 }], new Map([['a', 100]]))
     expect(s.totalRemaining).toBe(0)
-    expect(s.lines[0]).toMatchObject({ over: false, percentUsed: 100 })
+    expect(s.lines[0]).toMatchObject({ over: true, percentUsed: 100 })
   })
   it('over budget gives negative remaining', () => {
     expect(summarizeBudgets([{ categoryId: 'a', amountMinor: 1600000 }], new Map([['a', 1800000]])).totalRemaining).toBe(-200000)

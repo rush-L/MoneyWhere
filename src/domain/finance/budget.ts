@@ -12,13 +12,24 @@ export interface BudgetStatus {
   spent: Minor
   remaining: Minor // negative when over budget
   percentUsed: number // unrounded; 68.75 means 68.75%. Round only for display.
-  over: boolean
+  /** normal < 80% used, warning 80% to < 100%, exceeded >= 100% (exactly 100% is exceeded). */
+  status: BudgetThreshold
+  over: boolean // status === 'exceeded'
+}
+
+export type BudgetThreshold = 'normal' | 'warning' | 'exceeded'
+
+/** Exact integer comparison (BigInt), so the 80% / 100% boundaries never depend on float rounding. */
+function thresholdOf(budget: Minor, spent: Minor): BudgetThreshold {
+  if (spent >= budget) return 'exceeded'
+  return BigInt(spent) * 5n >= BigInt(budget) * 4n ? 'warning' : 'normal'
 }
 
 export function calculateBudgetStatus(budget: Minor, spent: Minor): BudgetStatus {
   assertMinor(budget)
   if (budget <= 0) throw new RangeError('Budget must be positive')
-  return { budget, spent, remaining: sub(budget, spent), percentUsed: (spent * 100) / budget, over: spent > budget }
+  const status = thresholdOf(budget, spent)
+  return { budget, spent, remaining: sub(budget, spent), percentUsed: (spent * 100) / budget, status, over: status === 'exceeded' }
 }
 
 /**
