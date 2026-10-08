@@ -66,5 +66,7 @@ export const projectDashboard = (s: DashboardInputs, items: readonly OutboxItem[
   buildDashboard({
     ...s,
     accounts: projectAccounts(s, items, walletId),
-    spend: localSpend(s.spend, s.confirmed.map((id) => ({ id })), items, walletId),
+    // expense + income baseline rows go through one projection, so pending income/expenses show and synced ones count once
+    spend: localSpend([...s.spend, ...(s.income ?? [])], s.confirmed.map((id) => ({ id })), items, walletId),
+    income: [], // already merged into spend above; avoids counting it twice
   })

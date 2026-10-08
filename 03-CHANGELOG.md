@@ -2,6 +2,20 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D3 — Dashboard metrics (2026-10-08)
+
+Implements the dashboard metric definitions in `01-APP-SPEC.md` section 13. No schema, RLS, RPC, Auth or Vercel change; D4 and later are not started; D2 threshold behavior is untouched.
+
+- **Correction to the D0 record:** the D0 audit stated that the dashboard "Spent" excluded unbudgeted expenses. It did not: `summarizeBudgets` already summed every expense in the month (the existing test "unbudgeted expenses still count as spent" covered it). The D0 entry below and the spec change note were wrong on this point; the spec note was corrected, the historical entry is left as written. What was actually missing was Budgeted Spent and Monthly Income.
+- **Total Spent:** every expense in the wallet-month, budgeted or not (value unchanged; label "Spent" is now "Total Spent").
+- **Budgeted Spent (new):** the part of Total Spent in categories that have a budget; subcategory expenses roll up to their budgeted parent. `summarizeBudgets` gained `budgetedSpent`; no second spending formula.
+- **Monthly Income (new):** all income in the wallet-month, transfers and expenses excluded (`monthlyIncome` in `src/domain/finance/budget.ts`, same month prefix test as spending). The dashboard now reads the month's income rows with the existing paged four-column query (`budgetService.income`, sharing one helper with `spending`); a failed read fails the whole load as before.
+- **Offline/pending:** baseline expense and income rows go through the one existing `localSpend` projection, so pending (non-BLOCKED) income and expenses show immediately and a synced row counts once. Snapshots cached before this change lack income and build with 0 until they revalidate.
+- **Unchanged:** Total Balance (account-balance aggregate), Total Budgeted, Needs Attention (D2 thresholds), month/timezone semantics, wallet scoping.
+- **Open question, not changed:** the hero **Remaining** is still total budgeted minus *Total Spent*, so unbudgeted spending reduces it (budgeted 8,000, budget categories untouched, 2,000 spent elsewhere shows 6,000 remaining). Subtracting Budgeted Spent instead may be what is intended; the contract does not define Remaining, so it needs a decision.
+- **Tests:** Total Spent / Budgeted Spent / Monthly Income for the required 5,000 + 2,000 + 20,000 + 3,000-transfer scenario and cases 1 to 6 (budgeted only, unbudgeted only, none, income only, transfers only, mixed with other months and subcategory roll-up); pending income, duplicate ids, BLOCKED items and pending unbudgeted expenses through the offline projection; income-read failure; D2 thresholds in Needs Attention.
+- **Verified:** 355 tests, typecheck, lint and build pass. Not verified against the hosted database or in a browser (no hosted run was made).
+
 ## Phase D2 — Budget threshold semantics (2026-10-08)
 
 Implements the budget-status contract in `01-APP-SPEC.md` section 12. No schema, RLS, RPC, Auth, Vercel, dashboard-metric or offline change; D3 and later are not started.

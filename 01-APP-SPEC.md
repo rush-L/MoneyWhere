@@ -468,7 +468,7 @@ Display:
 
 Transfers are excluded from both income and spending.
 
-Change note: before the Phase D0 contract the dashboard label "Spent" meant Budgeted Spent (unbudgeted expenses were excluded). "Spent" now means Total Spent, and Budgeted Spent is a separate figure.
+Change note: the dashboard's single "Spent" figure already summed every expense in the month; it is now labelled **Total Spent**, and **Budgeted Spent** and **Monthly Income** are new separate figures (Phase D3). The hero "Remaining" figure is unchanged: total budgeted minus Total Spent (see `03-CHANGELOG.md`, Phase D3, for the open question on that definition).
 
 **Deferred** dashboard items (section 25): Net Worth, upcoming recurring transactions, planned purchases, reserved funds, and an "available to spend" figure.
 

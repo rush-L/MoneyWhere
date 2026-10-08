@@ -11,7 +11,7 @@ export class DashboardError extends Error {}
 type Deps = {
   accounts: Pick<ReturnType<typeof createAccountService>, 'list'>
   categories: Pick<ReturnType<typeof createCategoryService>, 'list'>
-  budgets: Pick<ReturnType<typeof createBudgetService>, 'list' | 'spending'>
+  budgets: Pick<ReturnType<typeof createBudgetService>, 'list' | 'spending' | 'income'>
   transactions: Pick<ReturnType<typeof createTransactionService>, 'existingIds'>
 }
 
@@ -26,14 +26,15 @@ export function createDashboardService(d: Deps) {
   return {
     async load(walletId: string, month: string, pendingIds: readonly string[] = []): Promise<DashboardInputs> {
       try {
-        const [accounts, categories, budgets, spend, confirmed] = await Promise.all([
+        const [accounts, categories, budgets, spend, income, confirmed] = await Promise.all([
           d.accounts.list(walletId),
           d.categories.list(walletId),
           d.budgets.list(walletId, month),
           d.budgets.spending(walletId, month),
+          d.budgets.income(walletId, month),
           d.transactions.existingIds(pendingIds),
         ])
-        return { month, accounts, budgets, spend, categories, confirmed }
+        return { month, accounts, budgets, spend, income, categories, confirmed }
       } catch (e) {
         console.error('[dashboard]', e)
         throw new DashboardError("We couldn't load your financial summary. Please try again.")

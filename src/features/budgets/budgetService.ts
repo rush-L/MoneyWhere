@@ -13,6 +13,26 @@ function fail(message: string, err: unknown): never {
 export type SpendRow = Pick<Transaction, 'id' | 'type' | 'amount_minor' | 'category_id' | 'date'>
 const PAGE = 1000 // PostgREST's default row cap; a silent cut-off would understate spending
 
+/** One wallet-month of one transaction type, four columns only, filtered and paged by the database. */
+async function monthRows(client: SupabaseClient, walletId: string, month: string, type: 'expense' | 'income'): Promise<SpendRow[]> {
+  const all: SpendRow[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client
+      .from('transactions')
+      .select('id, type, amount_minor, category_id, date')
+      .eq('wallet_id', walletId)
+      .eq('type', type)
+      .gte('date', month)
+      .lt('date', shiftMonth(month, 1))
+      .order('id')
+      .range(from, from + PAGE - 1)
+      .returns<SpendRow[]>()
+    if (error) fail(type === 'income' ? 'Could not load income. Please try again.' : 'Could not load spending. Please try again.', error)
+    all.push(...data)
+    if (data.length < PAGE) return all
+  }
+}
+
 export function createBudgetService(client: SupabaseClient) {
   return {
     /** RLS limits rows to wallets the caller belongs to. */
@@ -27,22 +47,11 @@ export function createBudgetService(client: SupabaseClient) {
      * rows get large.
      */
     async spending(walletId: string, month: string): Promise<SpendRow[]> {
-      const all: SpendRow[] = []
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await client
-          .from('transactions')
-          .select('id, type, amount_minor, category_id, date')
-          .eq('wallet_id', walletId)
-          .eq('type', 'expense')
-          .gte('date', month)
-          .lt('date', shiftMonth(month, 1))
-          .order('id')
-          .range(from, from + PAGE - 1)
-          .returns<SpendRow[]>()
-        if (error) fail('Could not load spending. Please try again.', error)
-        all.push(...data)
-        if (data.length < PAGE) return all
-      }
+      return monthRows(client, walletId, month, 'expense')
+    },
+    /** Income of one wallet in one month (Dashboard Monthly Income). Same columns and paging as spending. */
+    async income(walletId: string, month: string): Promise<SpendRow[]> {
+      return monthRows(client, walletId, month, 'income')
     },
     async create(walletId: string, b: { category_id: string; month: string; amount_minor: Minor }): Promise<void> {
       const { error } = await client.from('budgets').insert({ id: crypto.randomUUID(), wallet_id: walletId, ...b })

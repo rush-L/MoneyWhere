@@ -73,6 +73,21 @@ describe('dashboard uses the same projection', () => {
   it('pending income raises the balance but is not spending', () => {
     expect(projectDashboard(snap(), [item('i', income(30000))], 'w1')).toMatchObject({ totalBalance: 130000, totalSpent: 0 })
   })
+  it('Monthly Income: server income + pending income this month; transfers and other months excluded', () => {
+    const s = snap({ income: [{ id: 'si', type: 'income', amount_minor: 2000000, category_id: null, date: '2026-10-02' }] })
+    const items = [item('i', income(30000)), item('t', transfer(500000)), item('o', expense({ type: 'income', account_id: 'cash', category_id: null, amount_minor: 99, date: '2026-09-30' }))]
+    expect(projectDashboard(s, items, 'w1')).toMatchObject({ monthlyIncome: 2030000, totalSpent: 0, budgetedSpent: 0 })
+  })
+  it('a server income row with the same id as a pending item is counted once; BLOCKED income never counts', () => {
+    const s = snap({ income: [{ id: 'i', type: 'income', amount_minor: 30000, category_id: null, date: '2026-10-05' }] })
+    expect(projectDashboard(s, [item('i', income(30000))], 'w1').monthlyIncome).toBe(30000)
+    expect(projectDashboard(snap(), [item('b', income(30000), 'BLOCKED')], 'w1').monthlyIncome).toBe(0)
+  })
+  it('pending unbudgeted expense raises Total Spent but not Budgeted Spent', () => {
+    const bills = expense({ account_id: 'cash', category_id: 'bills', amount_minor: 20000 })
+    const s = snap({ categories: [cat('food'), cat('groceries', 'food'), cat('bills')] })
+    expect(projectDashboard(s, [item('u', bills), item('g', cashExpense(50000))], 'w1')).toMatchObject({ totalSpent: 70000, budgetedSpent: 50000 })
+  })
   it('BLOCKED expense changes neither balance nor spending', () => {
     expect(projectDashboard(snap(), [item('b', cashExpense(50000), 'BLOCKED')], 'w1')).toMatchObject({ totalBalance: 100000, totalSpent: 0 })
   })

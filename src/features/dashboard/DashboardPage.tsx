@@ -127,7 +127,9 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
           </div>
           <div className="stat-grid">
             <div className="stat"><small>Budgeted</small><b><Money minor={data.totalBudgeted} /></b></div>
-            <div className="stat"><small>Spent</small><b><Money minor={data.totalSpent} /></b></div>
+            <div className="stat"><small>Total Spent</small><b><Money minor={data.totalSpent} /></b></div>
+            <div className="stat"><small>Budgeted Spent</small><b><Money minor={data.budgetedSpent} /></b></div>
+            <div className="stat"><small>Monthly Income</small><b><Money minor={data.monthlyIncome} /></b></div>
           </div>
         </Section>
       </div>

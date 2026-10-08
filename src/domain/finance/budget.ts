@@ -55,6 +55,17 @@ export function spendingByBudgetCategory(
   return out
 }
 
+/**
+ * Income total for one month ("YYYY-MM-01"). Only income counts: expenses and transfers never do.
+ * `txs` must already be one wallet's. Same prefix-compare month test as spendingByBudgetCategory.
+ */
+export function monthlyIncome(txs: readonly Pick<Transaction, 'type' | 'amount_minor' | 'date'>[], month: string): Minor {
+  const prefix = month.slice(0, 7)
+  let total: Minor = 0
+  for (const t of txs) if (t.type === 'income' && t.date.startsWith(prefix)) total = add(total, t.amount_minor)
+  return total
+}
+
 export interface BudgetLine extends BudgetStatus {
   categoryId: string
 }
@@ -63,6 +74,8 @@ export interface BudgetSummary {
   totalBudgeted: Minor
   /** ALL expense spending in the month (budgeted or not), per spendingByBudgetCategory. */
   totalSpent: Minor
+  /** The part of totalSpent that falls in categories with a budget (subcategories roll up to their budgeted parent). */
+  budgetedSpent: Minor
   totalRemaining: Minor // negative when over
   /** Every budget with its status, most urgent first: highest percentUsed (so over-budget first), then larger overage, then id. */
   lines: BudgetLine[]
@@ -75,10 +88,14 @@ export function summarizeBudgets(
 ): BudgetSummary {
   let totalBudgeted: Minor = 0
   let totalSpent: Minor = 0
-  for (const b of budgets) totalBudgeted = add(totalBudgeted, b.amountMinor)
+  let budgetedSpent: Minor = 0
+  for (const b of budgets) {
+    totalBudgeted = add(totalBudgeted, b.amountMinor)
+    budgetedSpent = add(budgetedSpent, spentByCategory.get(b.categoryId) ?? 0)
+  }
   for (const s of spentByCategory.values()) totalSpent = add(totalSpent, s)
   const lines = budgets
     .map((b) => ({ categoryId: b.categoryId, ...calculateBudgetStatus(b.amountMinor, spentByCategory.get(b.categoryId) ?? 0) }))
     .sort((a, b) => b.percentUsed - a.percentUsed || a.remaining - b.remaining || a.categoryId.localeCompare(b.categoryId))
-  return { totalBudgeted, totalSpent, totalRemaining: sub(totalBudgeted, totalSpent), lines }
+  return { totalBudgeted, totalSpent, budgetedSpent, totalRemaining: sub(totalBudgeted, totalSpent), lines }
 }
