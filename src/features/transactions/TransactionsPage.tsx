@@ -143,6 +143,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
       const parent = categories.find((c) => c.id === id)?.parentId
       return parent ? (categories.find((c) => c.id === parent)?.name ?? null) : null
     },
+    parentCategoryId: (id: string) => categories.find((c) => c.id === id)?.parentId ?? null,
     payerLabel: (id: string | null) => participantLabel(id, userId, labels),
   }
   const filtered = shown ? applyFilters(shown, filters, lookup) : null // cheap enough to run per render

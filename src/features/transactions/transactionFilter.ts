@@ -18,6 +18,7 @@ export interface FilterLookup {
   accountName: (id: string) => string
   categoryName: (id: string) => string
   parentCategoryName: (id: string) => string | null
+  parentCategoryId: (id: string) => string | null
   payerLabel: (id: string | null) => string
 }
 
@@ -40,6 +41,13 @@ export function matchesSearch(t: TransactionRow, q: string, lk: FilterLookup): b
   return fields.some((f) => !!f && f.toLowerCase().includes(needle))
 }
 
+/** A selected category matches itself and its children (a child's parent id is selected); selecting a child never matches siblings. */
+const matchesCategory = (t: TransactionRow, ids: string[], lk: FilterLookup) => {
+  if (!t.category_id) return false
+  const parent = lk.parentCategoryId(t.category_id)
+  return ids.includes(t.category_id) || (parent !== null && ids.includes(parent))
+}
+
 /** AND between criteria, OR within one. A transfer matches an account filter by its source or its destination. Order is preserved. */
 export function applyFilters<T extends TransactionRow>(rows: readonly T[], f: TxFilters, lk: FilterLookup): T[] {
   return rows.filter(
@@ -47,7 +55,7 @@ export function applyFilters<T extends TransactionRow>(rows: readonly T[], f: Tx
       (!f.from || t.date >= f.from) &&
       (!f.to || t.date <= f.to) &&
       (f.types.length === 0 || f.types.includes(t.type)) &&
-      (f.categoryIds.length === 0 || (t.category_id !== null && f.categoryIds.includes(t.category_id))) &&
+      (f.categoryIds.length === 0 || matchesCategory(t, f.categoryIds, lk)) &&
       (f.payerIds.length === 0 || (t.paid_by_user_id !== null && f.payerIds.includes(t.paid_by_user_id))) &&
       (f.accountIds.length === 0 || f.accountIds.includes(t.account_id) || (!!t.destination_account_id && f.accountIds.includes(t.destination_account_id))) &&
       matchesSearch(t, f.search, lk),

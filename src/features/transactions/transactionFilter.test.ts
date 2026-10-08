@@ -6,9 +6,10 @@ const ME = 'me'
 const BELLA = 'bella'
 const GONE = 'gone'
 const accounts: Record<string, string> = { a1: 'Cash Wallet', a2: 'BDO Savings', a3: 'GCash' }
-const cats: Record<string, { name: string; parent: string | null }> = {
+const cats: Record<string, { name: string; parent: string | null; parentId?: string }> = {
   food: { name: 'Food', parent: null },
-  groc: { name: 'Groceries', parent: 'Food' },
+  groc: { name: 'Groceries', parent: 'Food', parentId: 'food' },
+  dine: { name: 'Dining Out', parent: 'Food', parentId: 'food' },
   pay: { name: 'Salary', parent: null },
 }
 const names: Record<string, string> = { [ME]: 'You', [BELLA]: 'Bella' }
@@ -16,6 +17,7 @@ const lk: FilterLookup = {
   accountName: (id) => accounts[id] ?? 'Unknown account',
   categoryName: (id) => cats[id]?.name ?? 'Unknown category',
   parentCategoryName: (id) => cats[id]?.parent ?? null,
+  parentCategoryId: (id) => cats[id]?.parentId ?? null,
   payerLabel: (id) => (id === null ? 'Former member' : (names[id] ?? 'Former member')),
 }
 const f = (o: Partial<TxFilters>): TxFilters => ({ ...EMPTY_FILTERS, ...o })
@@ -77,6 +79,30 @@ describe('category, payer, type', () => {
   it('category is exact and multi-select is OR; transfers have no category', () => {
     expect(ids(applyFilters(all, f({ categoryIds: ['groc'] }), lk))).toEqual(['shop'])
     expect(ids(applyFilters(all, f({ categoryIds: ['groc', 'food'] }), lk))).toEqual(['rent', 'shop'])
+  })
+  describe('parent category selection', () => {
+    const dine = row({ id: 'dine', category_id: 'dine', paid_by_user_id: BELLA, account_id: 'a2' })
+    const salary = row({ id: 'sal', category_id: 'pay' })
+    const cat = [rent, shop, dine, salary, xfer]
+    it('a parent matches itself and all its children', () => {
+      expect(ids(applyFilters(cat, f({ categoryIds: ['food'] }), lk))).toEqual(['rent', 'shop', 'dine'])
+    })
+    it('a child does not match its siblings or its parent', () => {
+      expect(ids(applyFilters(cat, f({ categoryIds: ['groc'] }), lk))).toEqual(['shop'])
+      expect(ids(applyFilters(cat, f({ categoryIds: ['dine'] }), lk))).toEqual(['dine'])
+    })
+    it('multi-select is still OR', () => {
+      expect(ids(applyFilters(cat, f({ categoryIds: ['food', 'pay'] }), lk))).toEqual(['rent', 'shop', 'dine', 'sal'])
+      expect(ids(applyFilters(cat, f({ categoryIds: ['groc', 'pay'] }), lk))).toEqual(['shop', 'sal'])
+    })
+    it('a parent filter is still ANDed with the other filters', () => {
+      expect(ids(applyFilters(cat, f({ categoryIds: ['food'], payerIds: [BELLA] }), lk))).toEqual(['shop', 'dine'])
+      expect(ids(applyFilters(cat, f({ categoryIds: ['food', 'pay'], accountIds: ['a2'], search: 'dining' }), lk))).toEqual(['dine'])
+    })
+    it('search is unchanged: a parent name matches child rows, a child name does not match the parent row', () => {
+      expect(matchesSearch(dine, 'food', lk)).toBe(true)
+      expect(matchesSearch(rent, 'dining', lk)).toBe(false)
+    })
   })
   it('payer: current member, former member; transfers (no payer) never match', () => {
     expect(ids(applyFilters(all, f({ payerIds: [BELLA] }), lk))).toEqual(['shop'])
