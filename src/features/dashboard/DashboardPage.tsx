@@ -121,7 +121,7 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
       <div className="card">
         <Section title={monthLabel(month)}>
           <div className="hero">
-            <span className="hero-label">Remaining</span>
+            <span className="hero-label">Budget Remaining</span>
             <b className={`hero-figure${over ? ' over' : ''}`}><Money minor={data.totalRemaining} /></b>
             {over && <Badge tone="over">Over budget by <Money minor={-data.totalRemaining} /></Badge>}
           </div>

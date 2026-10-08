@@ -469,7 +469,7 @@ Display:
 
 Transfers are excluded from both income and spending.
 
-Change note: the dashboard's single "Spent" figure already summed every expense in the month; it is now labelled **Total Spent**, and **Budgeted Spent** and **Monthly Income** are new separate figures (Phase D3). The hero "Remaining" figure is Total Remaining as defined above.
+Change note: the dashboard's single "Spent" figure already summed every expense in the month; it is now labelled **Total Spent**, and **Budgeted Spent** and **Monthly Income** are new separate figures (Phase D3). The hero "Budget Remaining" figure is Total Remaining as defined above.
 
 **Deferred** dashboard items (section 25): Net Worth, upcoming recurring transactions, planned purchases, reserved funds, and an "available to spend" figure.
 
