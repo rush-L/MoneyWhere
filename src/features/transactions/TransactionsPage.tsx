@@ -13,6 +13,7 @@ import { memberLabels, participantLabel } from '../wallets/membership'
 import { createMembershipService } from '../wallets/membershipService'
 import type { Wallet } from '../wallets/wallet'
 import { canManage, parseTransaction, todayLocal, type TransactionRow } from './transaction'
+import { applyFilters, EMPTY_FILTERS, hasFilters, TYPE_LABEL, type TxFilters } from './transactionFilter'
 import { createTransactionService, TransactionConflictError } from './transactionService'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
@@ -21,6 +22,22 @@ import { Field } from '../../ui/Field'
 import { Money } from '../../ui/Money'
 import { PageHeader } from '../../ui/PageHeader'
 import { State } from '../../ui/State'
+
+/** A native checkbox group: any number of values, combined with OR by the filter. */
+function CheckGroup({ legend, options, selected, onChange }: { legend: string; options: { value: string; label: string }[]; selected: string[]; onChange: (v: string[]) => void }) {
+  if (options.length === 0) return null
+  return (
+    <fieldset className="filter-group">
+      <legend>{legend}</legend>
+      {options.map((o) => (
+        <label key={o.value} className="check">
+          <input type="checkbox" checked={selected.includes(o.value)} onChange={(e) => onChange(e.target.checked ? [...selected, o.value] : selected.filter((v) => v !== o.value))} />
+          {o.label}
+        </label>
+      ))}
+    </fieldset>
+  )
+}
 
 type TxSnapshot = { list: TransactionRow[]; accs: Account[]; cats: Category[] }
 const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '', paidByUserId: '' }) // paidByUserId '' = the signed-in user
@@ -42,6 +59,12 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
   const [editing, setEditing] = useState<TransactionRow | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [filters, setFilters] = useState<TxFilters>(EMPTY_FILTERS) // local only: not persisted, reset on wallet change and reload
+  const [filterWallet, setFilterWallet] = useState(wallet.id)
+  if (filterWallet !== wallet.id) {
+    setFilterWallet(wallet.id)
+    setFilters(EMPTY_FILTERS)
+  }
   const [formOpen, setFormOpen] = useState(false) // dialog visibility only; the form state above stays on this page
   const [formError, setFormError] = useState<string | null>(null)
   const isOwner = wallet.role === 'owner' // UX only; RLS enforces it
@@ -111,6 +134,32 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
 
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? 'Unknown account'
   const categoryName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'Unknown category') : '—')
+  // Search and filters run over `shown` (server rows + pending offline rows), before the day grouping below. Names are the ones displayed:
+  // offline, a payer other than "You" is "Another member", and that is what a search matches.
+  const lookup = {
+    accountName,
+    categoryName: (id: string) => categoryName(id),
+    parentCategoryName: (id: string) => {
+      const parent = categories.find((c) => c.id === id)?.parentId
+      return parent ? (categories.find((c) => c.id === parent)?.name ?? null) : null
+    },
+    payerLabel: (id: string | null) => participantLabel(id, userId, labels),
+  }
+  const filtered = shown ? applyFilters(shown, filters, lookup) : null // cheap enough to run per render
+  const filtersOn = hasFilters(filters)
+  const patch = (p: Partial<TxFilters>) => setFilters({ ...filters, ...p })
+  const typeOptions = Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))
+  const accountOptionsF = accounts.map((a) => ({ value: a.id, label: a.name }))
+  const categoryOptionsF = groupCategories(categories).flatMap((g) => [{ value: g.category.id, label: g.category.name }, ...g.children.map((c) => ({ value: c.id, label: `${g.category.name} › ${c.name}` }))])
+  const payerOptions = (() => {
+    const seen = [...new Set([userId, ...(labels?.keys() ?? []), ...(shown ?? []).map((t) => t.paid_by_user_id).filter((x): x is string => !!x)])]
+    let former = 0
+    const formerCount = seen.filter((id) => participantLabel(id, userId, labels) === 'Former member').length
+    return seen.map((id) => {
+      const label = participantLabel(id, userId, labels)
+      return { value: id, label: label === 'Former member' && formerCount > 1 ? `Former member ${++former}` : label }
+    })
+  })()
   const set = (k: keyof ReturnType<typeof blank>) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
 
   // Who Paid / Received by: current members only (the server enforces it). An edited row whose payer has since left keeps
@@ -194,7 +243,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
   const typeTone = (t: TransactionRow) => (t.type === 'transfer' ? 'info' : t.type === 'income' ? 'good' : 'neutral')
   // Presentation only: consecutive rows with the same date share a heading; order and content of `shown` are untouched.
   const days: { date: string; rows: LocalTransaction[] }[] = []
-  for (const t of shown ?? []) {
+  for (const t of filtered ?? []) {
     const last = days[days.length - 1]
     if (last && last.date === t.date) last.rows.push(t)
     else days.push({ date: t.date, rows: [t] })
@@ -212,6 +261,26 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
       {notice && <p role="status" className="note info">{notice}</p>}
       {!shown && !loadError && <State kind="loading">Loading transactions…</State>}
       {shown?.length === 0 && <State kind="empty">No transactions yet.</State>}
+      {shown && shown.length > 0 && (
+        <div className="filters">
+          <Field label="Search">
+            <input type="search" value={filters.search} placeholder="Note, account, category, who paid, type" onChange={(e) => patch({ search: e.target.value })} />
+          </Field>
+          <details className="filter-panel">
+            <summary>Filters{filtersOn ? ' (on)' : ''}</summary>
+            <div className="filter-dates">
+              <Field label="From"><input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => patch({ from: e.target.value })} /></Field>
+              <Field label="To"><input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => patch({ to: e.target.value })} /></Field>
+            </div>
+            <CheckGroup legend="Type" options={typeOptions} selected={filters.types} onChange={(types) => patch({ types })} />
+            <CheckGroup legend="Account" options={accountOptionsF} selected={filters.accountIds} onChange={(accountIds) => patch({ accountIds })} />
+            <CheckGroup legend="Category" options={categoryOptionsF} selected={filters.categoryIds} onChange={(categoryIds) => patch({ categoryIds })} />
+            <CheckGroup legend="Who paid / Received by" options={payerOptions} selected={filters.payerIds} onChange={(payerIds) => patch({ payerIds })} />
+          </details>
+          {filtersOn && <div className="actions"><Button variant="ghost" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</Button></div>}
+        </div>
+      )}
+      {shown && shown.length > 0 && filtered?.length === 0 && <State kind="empty">No matching transactions</State>}
       {days.map((day, i) => (
         <section key={`${day.date}-${i}`} className="tx-day">
           <h3 className="tx-date">{day.date}</h3>
