@@ -37,24 +37,78 @@ The product should help users:
 
 ---
 
+# Completed
+
+## Phase 13 — Mobile / Offline / UX Hardening — **Completed**
+
+Delivered (see `03-CHANGELOG.md`, Phase 13, and the Phase 14 hardening entry). Remaining limitations and any follow-up polish are recorded there rather than treated as open roadmap scope.
+
+---
+
 # Near-Term
 
-## Phase 13 — Mobile / Offline / UX Hardening
+## Phase D — Core product contract implementation
 
-Improve the reliability and usability of the existing application before introducing major new financial features.
+The Phase D0 contract is now part of `01-APP-SPEC.md`. Implementation order:
 
-Areas include:
+1. Budget threshold fix (exactly 100% is Exceeded)
+2. Dashboard metrics (Total Spent, Budgeted Spent, Monthly Income)
+3. Membership foundation (invitations, remove/leave)
+4. Co-member visibility and Former-member display
+5. Ownership transfer
+6. Who Paid / Received by
+7. Transaction search and filters
+8. Account deletion
+9. Data export
+10. Privacy Policy and Terms of Service pages
 
-* Mobile layout and responsive behavior
-* Offline first-load experience
-* Offline budget reads
-* Outbox retry behavior
-* FAILED mutation handling
-* BLOCKED mutation management
-* Create/edit synchronization edge cases
-* Cached-data lifecycle
-* Reconciliation and recovery UX
-* General usability improvements
+These items live in the specification, not here; this entry only tracks sequencing.
+
+---
+
+# Deferred from the Core Contract
+
+Explicitly moved out of `01-APP-SPEC.md` (Phase D0). They are ideas to keep, not requirements. Each needs design and promotion into the spec before implementation.
+
+## Split Mode
+
+Expenses split between wallet members using one method per transaction: equal, exact amount, or percentage. Requires a split data model, settlement/balance semantics between members, and widening the wallet `mode`. Until then every wallet is a Shared Log.
+
+## Wallet Archive
+
+A reversible read-only wallet state (no new transactions, hidden from the default list). Needs an archived-state design. Until then wallets are active or deleted.
+
+## Budget Rollover
+
+Optional carry-over of unspent (or overspent) budget into the next month.
+
+## Net Worth
+
+Assets minus credit-card and loan balances. Depends on Credit Card Management and Debt / Loan Management below.
+
+## Offline Writes for Non-Transaction Data
+
+Offline creation and edits for wallets, accounts, categories, budgets and membership. Today only transaction create/edit/delete work offline.
+
+## Notifications
+
+In-app notification centre and alerts for upcoming bills, credit-card due dates, loan payments and new shared-wallet transactions, alongside Push Notifications below.
+
+## Income Categories and Custom Categories
+
+Categories are expense-only today with owner-managed defaults. Income categories and user-defined category creation need a type model.
+
+## Recurring and Planned Purchases
+
+Recurring transactions and upcoming-bill awareness, and planned purchases, as part of the planning features below.
+
+## Custom Domain, SMTP and Production Google Sign-in
+
+Register a domain, move Auth URLs, configure custom SMTP (SPF/DKIM/DMARC), then enable email delivery to arbitrary users and Google sign-in. See the free-tier production strategy in `03-CHANGELOG.md`.
+
+## Reserved Funds, Wishlist / Purchase Goals, Events
+
+Already described under Planning Features below. They remain Deferred, and the "available to spend" dashboard figure depends on Reserved Funds.
 
 ---
 

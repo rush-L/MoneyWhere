@@ -2,6 +2,45 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D0 — Core product contract finalized (2026-10-08)
+
+Documentation and specification only. **Nothing in this entry is implemented.** No application code, database schema, migration, RLS, RPC, Supabase, Auth or Vercel change. Phase D implementation (D2 onward) has not started.
+
+The specification audit found a strong financial/security foundation but gaps and conflicts against `01-APP-SPEC.md`. The conflicts were resolved and approved, and `01-APP-SPEC.md` now states them as the implementation contract.
+
+### Resolved business rules (now in the spec; to be implemented in later phases)
+- **Wallet mode:** Shared Log only. Split Mode is deferred.
+- **Membership:** invite-link model; random high-entropy token, only its hash stored; single-use; revocable; 7-day expiry; authenticated acceptance; one generic error for invalid/expired/used; rate limited. Owner can remove members, a member can leave, and the owner cannot leave.
+- **Ownership transfer:** owner to an existing member only; atomic; exactly one owner afterwards; old owner becomes a member; history unchanged; rejected when the owner is the only member.
+- **Co-member visibility:** display name and avatar URL only; never email or other profile fields.
+- **Former members:** history keeps `created_by` / `paid_by_user_id`, the profile is not exposed after membership ends, and the UI shows "Former member".
+- **Payer:** `created_by` and `paid_by_user_id` are independent. `paid_by_user_id` is "Who Paid" for expenses and "Received by" for income; default is the creator; any current member may be selected; the server validates membership when the payer changes; transfers have no payer.
+- **Account deletion:** blocked while the user owns a wallet that has other members; wallets where the user is the only member are deleted with the account (named in the confirmation, export offered first); memberships end automatically; transactions are retained with `created_by` / `paid_by_user_id` anonymized and shown as "Former member" (anonymized rows become owner-editable only); profile data deleted; blocked while the local outbox has pending mutations ("Sync or discard pending changes first."), never auto-discarded.
+- **Data export:** client-side JSON, versioned envelope, only data the user can already read, no other users' email or profile fields.
+- **Transaction search/filter:** case-insensitive search over note, account, category (and parent), payer/member and type; filters for date, category, payer/member, account and type; AND between filters, OR within one filter; runs on already-loaded transactions so it works offline.
+- **Budget thresholds:** under 80% Normal, 80% to under 100% Warning, 100% or more Exceeded (exactly 100% is Exceeded); budget must be greater than zero.
+- **Legal pages:** `/privacy` and `/terms`, public; the spec lists the data practices to describe but contains no legal text.
+
+### Dashboard metric semantic change
+The dashboard "Spent" figure currently means spending inside budgeted categories only (unbudgeted expenses are excluded). The contract redefines it: **Total Spent** is all expense transactions in the selected wallet and month, and **Budgeted Spent** is a separate figure for categories that have a budget. Monthly Income is all income in the month; transfers are excluded from both; Total Balance stays the computed account-balance aggregate. The code still has the old meaning until the dashboard phase.
+
+### Deferred scope (explicit, moved to `02-ROADMAP.md`, ideas kept)
+Split Mode, **Wallet Archive** (no archive column, state or UI; wallets are active or deleted), budget rollover, Net Worth, credit-card/loan special semantics, receipts and file storage, push and advanced notifications, Reserved Funds and "available to spend", Wishlist/Purchase Goals, Events, recurring/planned purchases, offline writes for non-transaction data, income/custom categories, and custom domain/SMTP/production Google sign-in.
+
+### Documentation changes
+- `01-APP-SPEC.md`: wallet/member permission table consolidated (section 6); invitations, ownership transfer, privacy, payer, search/filter, budget, dashboard, export and deletion rules added; password recovery added to section 4; free-tier production strategy and its email limitation documented (section 17); section 25 lists every deferred feature.
+- `02-ROADMAP.md`: Phase 13 moved to "Completed"; Phase D sequencing and the deferred features recorded.
+- `03-CHANGELOG.md`: this entry; "Phase B (in progress)" corrected to complete.
+- Spec path: the repository already references the root-level `01-APP-SPEC.md` everywhere; the `docs/01-APP-SPEC.md` path appeared only in a task brief, so no repository reference needed correcting.
+
+### Known gaps in the current code relative to the contract (to be closed in Phase D)
+Budget `over` uses `spent > budget`; dashboard Spent excludes unbudgeted expenses; there are no invitations, member removal or ownership transfer; the payer is forced to the creator by trigger; the Transactions page shows "Another member"; no search/filter, export, account deletion or legal pages exist; account deletion is currently refused by foreign keys on `created_by` / `paid_by_user_id`.
+
+### Remaining documentation debt (not changed; cannot be proven from git history)
+- `supabase/VERIFICATION.md` covers only Phase 2 (2026-10-06); it is a point-in-time report, left as is.
+- Changelog phase numbering has no Phase 7, 11A or 12A entries, and Phase 2 is listed after Phase 1; no history was invented.
+- Dates on the Phase 3 to 6 entries (2026-10-07 to 10-12) mirror migration filename prefixes and cannot be verified: early history is a single commit (`6b20fab`) and all later commits are dated 2026-10-07.
+
 ## Free-tier production strategy: custom domain and SMTP deferred (2026-10-07)
 
 Documentation only. No application code, Supabase (Auth, Site URL, redirect URLs, schema, RLS), Vercel, DNS, SMTP, Google OAuth or environment-variable change; nothing was sent or created.
@@ -69,7 +108,7 @@ One focused correctness fix in `TransactionsPage.tsx`. No change to the mutation
 - **Verified (browser only, no automated test; the repository has no DOM test setup and none was added):** the same two-client scenario on the fixed code: the dialog closed, the notice was shown, the list stayed at 3 rows with the other client's version on top, no row carried the stale text, the dialog's form was reset (title "New transaction", empty fields), "+ Add" opened a clean form and a fresh Edit showed the latest note; normal edit saved; create and delete worked; an offline edit showed the pending state, reconnect synced it, and an offline edit made stale by the second client became a conflict row cleared with "Keep server version"; Dashboard balance, spent and remaining returned to the baseline (₱8749.50, ₱250.50, -₱50.50) after the test duplicate from the reproduction was deleted. TypeScript, lint, 308 tests and the production build pass.
 - **Limitation:** the discarded typed edit is not recoverable; the notice tells the user to reapply it. Only the online edit path is covered by this fix.
 
-## UI redesign, Phase B — existing screen migration (in progress)
+## UI redesign, Phase B — existing screen migration (complete)
 
 Presentation only; no change to financial logic, services, RLS, offline or sync behaviour.
 
