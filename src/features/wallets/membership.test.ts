@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { inviteLink, memberLabels, parseInviteHash, type Member } from './membership'
+import { FORMER_MEMBER, inviteLink, memberLabels, parseInviteHash, participantLabel, type Member } from './membership'
 import { createMembershipService, MembershipError } from './membershipService'
 
 const TOKEN = 'ab12'.repeat(16) // 64 hex chars (a test value, not a real secret)
@@ -26,13 +26,47 @@ describe('invitation link', () => {
   ])('rejects %s', (_n, hash) => expect(parseInviteHash(hash)).toBeNull())
 })
 
-describe('memberLabels', () => {
-  const m = (userId: string, role: 'owner' | 'member', joinedAt: string): Member => ({ userId, role, joinedAt })
-  const members = [m('o', 'owner', '2026-01-01'), m('b', 'member', '2026-02-01'), m('a', 'member', '2026-01-15')]
-  it('labels self "You", the owner "Owner", others by join order, and exposes no ids', () => {
-    expect(Object.fromEntries(memberLabels(members, 'b'))).toEqual({ o: 'Owner', a: 'Member 1', b: 'You' })
-    expect(Object.fromEntries(memberLabels(members, 'o'))).toEqual({ o: 'You', a: 'Member 1', b: 'Member 2' })
+const m = (userId: string, role: 'owner' | 'member', joinedAt: string, displayName: string | null = null): Member =>
+  ({ userId, role, joinedAt, displayName, avatarUrl: null })
+
+describe('memberLabels (current members only)', () => {
+  const members = [m('o', 'owner', '2026-01-01', 'Olivia'), m('b', 'member', '2026-02-01', 'Ben'), m('a', 'member', '2026-01-15', 'Ana')]
+  it('self is "You"; everyone else uses their display name, so not every member is "You"', () => {
+    expect(Object.fromEntries(memberLabels(members, 'b'))).toEqual({ o: 'Olivia', a: 'Ana', b: 'You' })
+    expect(Object.fromEntries(memberLabels(members, 'o'))).toEqual({ o: 'You', a: 'Ana', b: 'Ben' })
   })
+  it('a member without a display name falls back to Owner / Member N (join order); blank names count as none', () => {
+    const nameless = [m('o', 'owner', '2026-01-01'), m('b', 'member', '2026-02-01', '   '), m('a', 'member', '2026-01-15')]
+    expect(Object.fromEntries(memberLabels(nameless, 'x'))).toEqual({ o: 'Owner', a: 'Member 1', b: 'Member 2' })
+  })
+})
+
+describe('participantLabel (created_by / paid_by_user_id on a record)', () => {
+  const current = [m('o', 'owner', '2026-01-01', 'Olivia'), m('b', 'member', '2026-02-01', 'Ben')]
+  it('current user is "You"; a current member shows their current identity; the owner stays the owner', () => {
+    const labels = memberLabels(current, 'b')
+    expect(participantLabel('b', 'b', labels)).toBe('You')
+    expect(participantLabel('o', 'b', labels)).toBe('Olivia')
+    expect(participantLabel('b', 'o', memberLabels(current, 'o'))).toBe('Ben')
+  })
+  it('before / after: the same record resolves to a name, then to "Former member" once the person is no longer a member', () => {
+    const before = memberLabels(current, 'o')
+    expect(participantLabel('b', 'o', before)).toBe('Ben')
+    const after = memberLabels(current.filter((x) => x.userId !== 'b'), 'o') // Ben left or was removed
+    expect(participantLabel('b', 'o', after)).toBe(FORMER_MEMBER)
+    expect(participantLabel('b', 'o', after)).toBe('Former member')
+    expect(JSON.stringify([...after])).not.toContain('Ben') // the old name is not in anything the UI holds
+  })
+  it('an unknown historical user (never listed) and a null id are "Former member", never a profile', () => {
+    const labels = memberLabels(current, 'o')
+    expect(participantLabel('someone-else', 'o', labels)).toBe(FORMER_MEMBER)
+    expect(participantLabel(null, 'o', labels)).toBe(FORMER_MEMBER)
+  })
+  it('when the member list could not be loaded (offline) other people are a neutral "Another member", not "Former member"', () => {
+    expect(participantLabel('b', 'o', null)).toBe('Another member')
+    expect(participantLabel('o', 'o', null)).toBe('You')
+  })
+  it('former-member label is exact', () => expect(FORMER_MEMBER).toBe('Former member'))
 })
 
 type Reply = { data?: unknown; error?: { code?: string; message?: string } | null }
@@ -46,6 +80,11 @@ describe('membership service', () => {
     const { svc, rpc } = client({ data: { id: 'i1', token: TOKEN, expires_at: '2026-10-15T00:00:00Z' } })
     await expect(svc.createInvitation('w1')).resolves.toEqual({ id: 'i1', token: TOKEN, expiresAt: '2026-10-15T00:00:00Z' })
     expect(rpc).toHaveBeenCalledWith('create_wallet_invitation', { p_wallet_id: 'w1' })
+  })
+  it('listMembers maps the visibility function reply (name and avatar only) and asks for the wallet', async () => {
+    const { svc, rpc } = client({ data: [{ user_id: 'u1', role: 'owner', joined_at: '2026-01-01T00:00:00Z', display_name: 'Olivia', avatar_url: 'https://img.example/o.png' }] })
+    await expect(svc.listMembers('w1')).resolves.toEqual([{ userId: 'u1', role: 'owner', joinedAt: '2026-01-01T00:00:00Z', displayName: 'Olivia', avatarUrl: 'https://img.example/o.png' }])
+    expect(rpc).toHaveBeenCalledWith('list_wallet_members', { p_wallet_id: 'w1' })
   })
   it('preview and accept map valid and generic-invalid replies', async () => {
     await expect(client({ data: { ok: true, wallet_name: 'Home', already_member: false } }).svc.previewInvitation(TOKEN)).resolves.toEqual({ valid: true, walletName: 'Home', alreadyMember: false })

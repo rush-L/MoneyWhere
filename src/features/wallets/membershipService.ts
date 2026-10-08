@@ -20,11 +20,20 @@ export type AcceptResult = { ok: false } | { ok: true; joined: boolean }
 /** Membership writes are online-only (no outbox): a network failure surfaces as the same safe message. */
 export function createMembershipService(client: SupabaseClient) {
   return {
-    /** RLS: any member can read the member list of their wallet. */
+    /**
+     * Current members with display name and avatar, for members of that wallet only (database function; profiles are
+     * not readable directly). Former members are not returned.
+     */
     async listMembers(walletId: string): Promise<Member[]> {
-      const { data, error } = await client.from('wallet_members').select('user_id, role, created_at').eq('wallet_id', walletId).order('created_at').returns<{ user_id: string; role: string; created_at: string }[]>()
+      const { data, error } = await client.rpc('list_wallet_members', { p_wallet_id: walletId })
       if (error) fail('Could not load members. Please try again.', error)
-      return data.map((r) => ({ userId: r.user_id, role: (r.role === 'owner' ? 'owner' : 'member') as WalletRole, joinedAt: r.created_at }))
+      return (data as { user_id: string; role: string; joined_at: string; display_name: string | null; avatar_url: string | null }[]).map((r) => ({
+        userId: r.user_id,
+        role: (r.role === 'owner' ? 'owner' : 'member') as WalletRole,
+        joinedAt: r.joined_at,
+        displayName: r.display_name,
+        avatarUrl: r.avatar_url,
+      }))
     },
     /** Owner only (RLS returns nothing to anyone else). Token hashes are not readable columns. */
     async listInvitations(walletId: string): Promise<PendingInvitation[]> {

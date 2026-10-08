@@ -2,6 +2,15 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D5 — Co-member visibility / Former member (2026-10-08)
+
+Implements `01-APP-SPEC.md` section 6.5. D6 and later are not started. **Migration `20261024000000_co_member_visibility.sql` is tested locally (PGlite) but has NOT been applied to any hosted Supabase project.**
+
+- **Current members:** new RPC `list_wallet_members(wallet)` (`SECURITY DEFINER`, `search_path = ''`, authenticated only) returns each current member's role, join date, display name and avatar to members of that wallet only. No email or auth data. Outsiders, other wallets and anon get an error, so it cannot enumerate users. `profiles` RLS is unchanged (own row only); no broad policy was added.
+- **UI:** Members tab shows display name and avatar ("You" for self; "Owner"/"Member N" only when a member has no name). Transaction list "paid by" now resolves through the current member list.
+- **Former members:** `created_by` / `paid_by_user_id` are never touched. Anyone not in the current member list shows as **Former member**, and their name, email and avatar are not returned by any wallet path. Re-joining makes them visible again. Offline (member list unavailable), non-self users show as "Another member".
+- **Tests:** `supabase/tests/co_members.rls.test.ts` (visibility, boundaries, before/after removal and leave, profile policies unchanged, function privileges) and resolver tests in `membership.test.ts`. 437 tests pass; typecheck, lint, build clean.
+
 ## Phase D4 — Membership foundation (2026-10-08)
 
 Implements the membership and invitation rules of `01-APP-SPEC.md` sections 6.1 to 6.3. Ownership transfer (D6), co-member names and Former-member display (D5), Who Paid (D7) and everything later are not started. Transactions, budgets, dashboard and offline code are untouched. **Migration `20261023000000_membership.sql` is written and tested locally (PGlite) but has NOT been applied to any hosted Supabase project.**

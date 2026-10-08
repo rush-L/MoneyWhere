@@ -9,6 +9,8 @@ import { readThrough, walletKey, type ReadResult } from '../offline/db/cache'
 import { useOffline, useWatchWallet } from '../offline/hooks/OfflineProvider'
 import { countedPending, localBalances, mergeLocal, reconcile, type LocalTransaction } from '../offline/outbox/projection'
 import { describeSync, staleNote } from '../offline/syncLabels'
+import { memberLabels, participantLabel } from '../wallets/membership'
+import { createMembershipService } from '../wallets/membershipService'
 import type { Wallet } from '../wallets/wallet'
 import { canManage, parseTransaction, todayLocal, type TransactionRow } from './transaction'
 import { createTransactionService, TransactionConflictError } from './transactionService'
@@ -95,6 +97,18 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
     expectedRef.current = txs && countedPending(txs, items, wallet.id).length ? new Map(localAccounts.map((a) => [a.id, a.currentBalanceMinor])) : null
   }, [localAccounts, txs, items, wallet.id])
 
+  // Current members of this wallet (null until loaded, or offline): the only source of names. Someone not in it is a former member.
+  const memberService = useMemo(() => (supabase ? createMembershipService(supabase) : null), [])
+  const [labels, setLabels] = useState<Map<string, string> | null>(null)
+  useEffect(() => {
+    let live = true
+    memberService?.listMembers(wallet.id).then(
+      (m) => live && setLabels(memberLabels(m, userId)),
+      () => {}, // offline or failed: keep what we have; unknown people show as "Another member"
+    )
+    return () => { live = false }
+  }, [memberService, wallet.id, userId, syncedTick])
+
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? 'Unknown account'
   const categoryName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'Unknown category') : '—')
   const set = (k: keyof ReturnType<typeof blank>) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
@@ -168,7 +182,7 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
   // (a pending create has none yet). Owner edits of other members' transactions stay online-only.
   const offlineEditable = (t: LocalTransaction) => canManage(isOwner, t, userId) && (online || (t.created_by === userId && (t.version !== undefined || !!t.sync)))
   const syncEditable = (t: LocalTransaction) => !!t.sync && describeSync(t.sync, (items.find((i) => i.id === t.id)?.attempt_count ?? 0) > 0).editable
-  const paidBy = (t: TransactionRow) => (t.paid_by_user_id === userId ? 'Me' : 'Another member')
+  const paidBy = (t: TransactionRow) => participantLabel(t.paid_by_user_id, userId, labels)
 
   const typeLabel = (t: TransactionRow) => (t.type === 'transfer' ? 'Transfer' : t.type === 'income' ? 'Income' : 'Expense')
   const typeSign = (t: TransactionRow) => (t.type === 'transfer' ? '↔' : t.type === 'income' ? '+' : '−')

@@ -71,7 +71,10 @@ export function MembersPanel({ wallet, userId, onLeft }: { wallet: Wallet; userI
             {members.map((m) => (
               <li key={m.userId} className="wallet-row">
                 <div className="wallet-id">
-                  <strong>{labels.get(m.userId)}</strong>
+                  <strong className="member-name">
+                    {m.avatarUrl && <img className="avatar" src={m.avatarUrl} alt="" referrerPolicy="no-referrer" />}
+                    {labels.get(m.userId)}
+                  </strong>
                   <span className="wallet-meta">
                     <Badge tone={m.role === 'owner' ? 'info' : 'neutral'}>{m.role === 'owner' ? 'Owner' : 'Member'}</Badge>
                     <small>Joined {day(m.joinedAt)}</small>
