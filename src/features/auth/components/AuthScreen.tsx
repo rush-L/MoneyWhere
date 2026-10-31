@@ -132,6 +132,9 @@ export function AuthScreen() {
             </>
           )}
         </p>
+        <p className="field-hint">
+          <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a>
+        </p>
       </div>
     </main>
   )

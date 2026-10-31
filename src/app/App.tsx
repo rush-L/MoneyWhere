@@ -11,6 +11,8 @@ import { ProfilePage } from '../features/profile/ProfilePage'
 import { WalletsPage } from '../features/wallets/WalletsPage'
 import { JoinInvitation } from '../features/wallets/JoinInvitation'
 import { parseInviteHash } from '../features/wallets/membership'
+import { PrivacyPolicyPage } from '../features/legal/PrivacyPolicyPage'
+import { TermsOfServicePage } from '../features/legal/TermsOfServicePage'
 
 // UI gating only; Supabase Auth + RLS are the real security boundary.
 function Shell() {
@@ -70,7 +72,13 @@ function Shell() {
   )
 }
 
+// Public pages (spec 17): plain pathname check, no router. Rendered before AuthProvider so they
+// never depend on sign-in state; "back" is a full navigation back to the app, not app routing.
 export function App() {
+  const path = window.location.pathname
+  const back = () => window.location.assign('/')
+  if (path === '/privacy') return <PrivacyPolicyPage onBack={back} />
+  if (path === '/terms') return <TermsOfServicePage onBack={back} />
   return (
     <AuthProvider>
       <Shell />

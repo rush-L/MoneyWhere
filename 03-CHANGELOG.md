@@ -2,6 +2,18 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Phase D11 — Privacy Policy and Terms of Service pages (2026-10-31)
+
+Implements `01-APP-SPEC.md` section 17 (the `/privacy` and `/terms` requirement; 17.1 export and 17.2 deletion were already implemented in D9/D10). Client-only, no migration, RLS, RPC or grant change. This completes the Phase D implementation sequence; the production gate for D8/D9/D10 is still separately pending (see those entries).
+
+- **Pages:** `src/features/legal/PrivacyPolicyPage.tsx` and `TermsOfServicePage.tsx`. Static content built from existing UI primitives (`PageHeader`, `Section`), no new abstraction. The Privacy Policy covers what's collected (email, display name, avatar), financial data the user enters, what co-members can see (display name/avatar only), the two infrastructure processors (Supabase, Vercel), retention/anonymization after account deletion, export/deletion instructions, and a Philippine Data Privacy Act (R.A. 10173) note. The Terms of Service covers acceptance, account responsibility, shared-wallet visibility, acceptable use, "not financial advice", free-tier availability, export/deletion, warranty disclaimer, and governing law. Both carry a "Last updated" date and a contact email; both note they are not a substitute for professional legal advice, per the spec's own disclaimer.
+- **Routing:** the app has no client-side router. `App.tsx` checks `window.location.pathname` for `/privacy` and `/terms` *before* `AuthProvider` mounts, so the pages render with no Supabase/auth calls at all and are trivially public — this is a different mechanism from the in-app `dashboard`/`wallets`/`profile` tabs (plain React state, no URL) and from the invite link (`#/join/<token>` hash). "Back" is a real navigation to `/`, not app state.
+- **Vercel:** added two explicit `rewrites` entries (`/privacy`, `/terms` → `/index.html`) so a direct load or refresh on either path doesn't 404 on static hosting; deliberately not a catch-all, to avoid changing behavior for any other path. The PWA's existing `navigateFallback: '/index.html'` already covered this offline/once-installed; the rewrite covers the first, non-PWA load.
+- **Links:** added to the sign-in screen (`AuthScreen.tsx`) and the Profile screen (`ProfilePage.tsx`), each page also links to the other.
+- **Tests:** no new test file — consistent with the rest of the codebase, static page components aren't unit-tested (only pure logic and services are). `npm test`: 585 pass (unchanged); typecheck, lint, build clean.
+- **Browser verification (local `vite preview`):** direct navigation to `/privacy` and `/terms` (confirms the Vercel-rewrite path, not just in-app navigation) renders full content; the back link returns to `/` and shows the sign-in screen with both links wired to the correct `href`; a text-wrap artifact in the Terms copy ("general- availability") was caught and fixed before commit.
+- **Not verified:** production (not deployed); the Profile screen's links (requires a signed-in session, not exercised this session); any screen narrower than the desktop preview window; a Google-sign-in account.
+
 ## Phase D9 — Account deletion (2026-10-08)
 
 Implements `01-APP-SPEC.md` section 17.2. Migration `20261027000000_account_deletion.sql` is applied to the **DEV** project only (`sitlhdkfihzmdzxfrliv`); production is untouched and nothing is pushed or deployed. Status: **IMPLEMENTED, DEV-VERIFIED — production gate pending**.
