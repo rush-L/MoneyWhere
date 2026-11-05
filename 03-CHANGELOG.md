@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Voice add (2026-11-05)
+
+Client-only: no migration, RPC, RLS or dependency change. Not in `01-APP-SPEC.md` or the roadmap; built on the owner's request. Status: **IMPLEMENTED — device verification pending**.
+
+- **Speak to prefill:** a 🎤 Speak button (English / Tagalog recognizer language) on the new-transaction form. The browser's Web Speech API turns speech into text; `voiceEntry.ts` (pure) fills type, amount, account(s), category and note. It **only prefills**: the user reviews and presses Add, and `parseTransaction`/`parseMinor` remain the only amount parser (extra decimals are passed through and rejected, never rounded). Nothing is guessed: an unmatched account or category stays empty. Transfers take the first two spoken accounts as from, then to.
+- **Shortcut:** the manifest has a "Voice add" shortcut to `/?add=voice` (long-press the installed icon; Android can place it on the home screen). It opens the form and tries to start the mic; if the browser wants a tap, Speak is the fallback. With exactly one wallet it opens that wallet; with several, the user picks one first (a wallet is never guessed). The query is cleared after use.
+- **Limits:** needs a connection (Chrome sends audio to Google); numbers must arrive as digits (spelled-out Tagalog numbers are not parsed); no real home-screen widget (needs a native app).
+- **Tests:** `voiceEntry.test.ts` (6). `npm test` 591 pass; typecheck, lint, build clean.
+- **Not verified:** a real phone (mic permission, auto-start on launch, installed-shortcut behaviour, `fil-PH` recognition quality). Reason: needs an Android device with the installed PWA.
+
 ## Phase D11 — Privacy Policy and Terms of Service pages (2026-10-31)
 
 Implements `01-APP-SPEC.md` section 17 (the `/privacy` and `/terms` requirement; 17.1 export and 17.2 deletion were already implemented in D9/D10). Client-only, no migration, RLS, RPC or grant change. This completes the Phase D implementation sequence; the production gate for D8/D9/D10 is still separately pending (see those entries).

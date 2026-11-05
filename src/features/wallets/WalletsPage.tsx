@@ -16,6 +16,9 @@ import { PageHeader } from '../../ui/PageHeader'
 import { Section } from '../../ui/Section'
 import { State } from '../../ui/State'
 
+// "Voice add" app shortcut opens /?add=voice. Read once; never guesses a wallet: with several, the user picks, then the mic starts.
+const VOICE_LAUNCH = typeof location !== 'undefined' && new URLSearchParams(location.search).get('add') === 'voice'
+
 const SECTIONS = [
   ['transactions', 'Transactions'],
   ['accounts', 'Accounts'],
@@ -51,6 +54,13 @@ export function WalletsPage({ userId }: { userId: string }) {
     void load(true)
   }, [load])
 
+  const [voice, setVoice] = useState(VOICE_LAUNCH)
+  const voiceDone = useCallback(() => {
+    setVoice(false)
+    history.replaceState(null, '', location.pathname) // a reload must not re-trigger the mic
+  }, [])
+  if (voice && !selected && wallets?.length === 1 && wallets[0]) setSelected({ wallet: wallets[0], page: 'transactions' }) // set during render, as TransactionsPage does for filters
+
   async function create(ev: FormEvent) {
     ev.preventDefault()
     const parsed = parseWalletName(name)
@@ -69,11 +79,11 @@ export function WalletsPage({ userId }: { userId: string }) {
   }
 
   if (selected) {
-    const back = () => setSelected(null)
+    const back = () => { setSelected(null); voiceDone() }
     // Presentation only: exactly one section is mounted at a time, so switching tabs remounts and reloads it like before.
     const { wallet } = selected
     const section =
-      selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} />
+      selected.page === 'transactions' ? <TransactionsPage wallet={wallet} userId={userId} voice={voice} onVoiceHandled={voiceDone} />
       : selected.page === 'budgets' ? <BudgetsPage wallet={wallet} userId={userId} />
       : selected.page === 'accounts' ? <AccountsPage wallet={wallet} userId={userId} />
       : selected.page === 'members' ? <MembersPanel wallet={wallet} userId={userId} onLeft={() => { setSelected(null); void load() }} onTransferred={() => { setSelected({ wallet: { ...wallet, role: 'member' }, page: 'members' }); void load() }} />

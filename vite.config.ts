@@ -17,6 +17,7 @@ export default defineConfig({
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
+        shortcuts: [{ name: 'Voice add', short_name: 'Voice add', description: 'Speak a transaction', url: '/?add=voice', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] }],
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },

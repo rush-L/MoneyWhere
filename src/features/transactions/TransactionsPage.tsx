@@ -15,6 +15,8 @@ import type { Wallet } from '../wallets/wallet'
 import { canManage, parseTransaction, hasFormerPayer, resolvePayer, todayLocal, type TransactionRow } from './transaction'
 import { applyFilters, EMPTY_FILTERS, hasFilters, TYPE_LABEL, type TxFilters } from './transactionFilter'
 import { createTransactionService, TransactionConflictError } from './transactionService'
+import { useSpeech } from './useSpeech'
+import { parseVoice } from './voiceEntry'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
@@ -42,7 +44,7 @@ function CheckGroup({ legend, options, selected, onChange }: { legend: string; o
 type TxSnapshot = { list: TransactionRow[]; accs: Account[]; cats: Category[] }
 const blank = () => ({ type: 'expense', accountId: '', destinationAccountId: '', categoryId: '', amount: '', date: todayLocal(), note: '', paidByUserId: '', keepFormer: false }) // paidByUserId '' = the signed-in user
 
-export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: string }) {
+export function TransactionsPage({ wallet, userId, voice = false, onVoiceHandled }: { wallet: Wallet; userId: string; voice?: boolean; onVoiceHandled?: () => void }) {
   const txService = useMemo(() => (supabase ? createTransactionService(supabase) : null), [])
   const { online, items, syncedTick, cache, saveTransaction, editTransaction, deleteTransaction, discardItem } = useOffline()
   useWatchWallet(wallet.id)
@@ -170,6 +172,28 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
   const keepFormer = form.keepFormer
   const payerId = useMemo(() => resolvePayer(keepFormer, form.paidByUserId, userId), [keepFormer, form.paidByUserId, userId])
   const payerIds = [...new Set([userId, ...(labels?.keys() ?? []), payerId])].filter(Boolean)
+
+  // Voice entry: only PREFILLS the form; the user reviews and presses Add. English or Tagalog (the parser understands both; lang is the recognizer's).
+  const [lang, setLang] = useState('en-PH')
+  const [heard, setHeard] = useState<string | null>(null)
+  const onHeard = useCallback(
+    (text: string) => {
+      setHeard(text)
+      const fill = parseVoice(text, accounts, categories)
+      setForm((f) => ({ ...f, ...fill, date: f.date }))
+    },
+    [accounts, categories],
+  )
+  const speech = useSpeech(onHeard)
+  const voiceStarted = useRef(false)
+  useEffect(() => {
+    // Launched from the "Voice add" shortcut (?add=voice): open the form and try the mic once accounts are loaded.
+    if (!voice || voiceStarted.current || accounts.length === 0 || editing) return
+    voiceStarted.current = true
+    setFormOpen(true)
+    if (speech.supported) speech.start(lang)
+    onVoiceHandled?.()
+  }, [voice, accounts.length, editing, speech, lang, onVoiceHandled])
 
   async function save(ev: FormEvent) {
     ev.preventDefault()
@@ -337,6 +361,20 @@ export function TransactionsPage({ wallet, userId }: { wallet: Wallet; userId: s
       ) : (
         <Dialog open={formOpen} onClose={closeForm} dismissible={!busy} title={editing ? 'Edit transaction' : transfer ? 'New transfer' : 'New transaction'}>
           <form onSubmit={(e) => void save(e)} noValidate>
+            {!editing && speech.supported && (
+              <div className="actions">
+                <Button variant="secondary" onClick={() => (speech.listening ? speech.stop() : speech.start(lang))} disabled={busy}>
+                  {speech.listening ? '■ Stop' : '🎤 Speak'}
+                </Button>
+                <select aria-label="Voice language" value={lang} onChange={(e) => setLang(e.target.value)} disabled={busy || speech.listening}>
+                  <option value="en-PH">English</option>
+                  <option value="fil-PH">Tagalog</option>
+                </select>
+              </div>
+            )}
+            {speech.listening && <p role="status" className="note">Listening… e.g. “coffee 120 cash”</p>}
+            {heard && !speech.listening && <p role="status" className="note">Heard: “{heard}” · check the fields below.</p>}
+            {speech.error && <p role="alert" className="error">{speech.error}</p>}
             <Field label="Type">
               <select value={form.type} onChange={set('type')} disabled={busy}>
                 <option value="expense">Expense</option>
