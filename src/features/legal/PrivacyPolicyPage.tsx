@@ -2,7 +2,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { Section } from '../../ui/Section'
 
 const LAST_UPDATED = 'October 31, 2026'
-const CONTACT_EMAIL = 'reambillo.russel@gmail.com'
+const CONTACT_EMAIL = 'moneywhere.app@gmail.com'
 
 /** Public, no-auth page (spec 17). Rendered before AuthProvider mounts; `onBack` is a plain navigation, not app routing. */
 export function PrivacyPolicyPage({ onBack }: { onBack: () => void }) {
