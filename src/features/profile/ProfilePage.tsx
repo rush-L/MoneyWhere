@@ -99,7 +99,7 @@ export function ProfilePage({ userId, email }: { userId: string; email: string |
           </div>
         </Section>
       </div>
-      <p className="field-hint">
+      <p className="field-hint legal-links">
         <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a>
       </p>
     </>

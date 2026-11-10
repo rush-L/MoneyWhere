@@ -97,6 +97,7 @@ form { display: grid; gap: var(--s-3); }
 label { display: grid; gap: var(--s-1); font-size: var(--t-sm); min-width: 0; }
 .field-error { color: var(--c-over); }
 .field-hint { color: var(--c-muted); }
+.legal-links { text-align: center; }
 a { color: var(--c-brand); font: inherit; } /* ponytail: only legal/mailto links use <a>; scope it if app links appear */
 input, select { box-sizing: border-box; min-width: 0; max-width: 100%; min-height: var(--tap); padding: var(--s-2) var(--s-3); font-size: var(--t-base); color: inherit; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-1); }
 
