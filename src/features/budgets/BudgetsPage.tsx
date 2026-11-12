@@ -108,7 +108,7 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
     return (
       <li key={b.id} className="card budget">
         <strong>{name}</strong>
-        <Meter percent={s.percentUsed} over={s.over} label={`${name} budget used`} />
+        <Meter percent={s.percentUsed} status={s.status} label={`${name} budget used`} />
         <div><Money minor={s.spent} /> / <Money minor={s.budget} /></div>
         <div>
           {s.over ? (
@@ -116,7 +116,7 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
           ) : (
             <><Money minor={s.remaining} /> remaining</>
           )}
-          {' · '}{s.percentUsed.toFixed(1)}% used
+          {' · '}{s.percentUsed.toFixed(1)}% used{s.status === 'warning' && ' · Near limit'}
         </div>
         {isOwner && editing?.id === b.id && (
           <form onSubmit={saveEdit} noValidate>

@@ -8,7 +8,7 @@ import { loadDashboard, projectDashboard } from '../offline/localFinance'
 import { staleNote } from '../offline/syncLabels'
 import { createWalletService } from '../wallets/walletService'
 import type { Wallet } from '../wallets/wallet'
-import { pickWallet, type DashboardInputs } from './dashboard'
+import { attentionAlerts, pickWallet, type DashboardInputs } from './dashboard'
 import { createDashboardServiceFor } from './dashboardService'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
@@ -17,6 +17,7 @@ import { Meter } from '../../ui/Meter'
 import { Money } from '../../ui/Money'
 import { PageHeader } from '../../ui/PageHeader'
 import { Section } from '../../ui/Section'
+import { SummaryCard } from '../../ui/SummaryCard'
 import { State } from '../../ui/State'
 
 const KEY = 'moneywhere.dashboardWallet'
@@ -115,49 +116,56 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
   if (!data) return <State kind="loading">Loading your summary…</State>
 
   const over = data.totalRemaining < 0
+  const alerts = attentionAlerts(data, items, wallet.id)
   return (
     <>
       {stale && <p role="status" className="note">{staleNote(checking)}</p>}
-      <div className="card">
-        <Section title={monthLabel(month)}>
-          <div className="hero">
-            <span className="hero-label">Budget Remaining</span>
-            <b className={`hero-figure${over ? ' over' : ''}`}><Money minor={data.totalRemaining} /></b>
-            {over && <Badge tone="over">Over budget by <Money minor={-data.totalRemaining} /></Badge>}
-          </div>
-          <div className="stat-grid">
-            <div className="stat"><small>Budgeted</small><b><Money minor={data.totalBudgeted} /></b></div>
-            <div className="stat"><small>Total Spent</small><b><Money minor={data.totalSpent} /></b></div>
-            <div className="stat"><small>Budgeted Spent</small><b><Money minor={data.budgetedSpent} /></b></div>
-            <div className="stat"><small>Monthly Income</small><b><Money minor={data.monthlyIncome} /></b></div>
-          </div>
-        </Section>
+      <p className="period">{monthLabel(month)}</p>
+      <div className="summary-grid">
+        <SummaryCard label="Budget Remaining" tone={over ? 'over' : undefined} note={<>of <Money minor={data.totalBudgeted} /> budgeted{over && <> · <Badge tone="over">Over budget</Badge></>}</>}>
+          <Money minor={data.totalRemaining} />
+        </SummaryCard>
+        <SummaryCard label="Income" note="This month, transfers excluded"><Money minor={data.monthlyIncome} /></SummaryCard>
+        <SummaryCard label="Expenses" note={<><Money minor={data.budgetedSpent} /> in budgeted categories</>}><Money minor={data.totalSpent} /></SummaryCard>
+        <SummaryCard label="Total Balance" note={data.accountCount === 0 ? 'No accounts yet. Add an account to start tracking your money.' : `${data.accountCount} account${data.accountCount === 1 ? '' : 's'}`}>
+          {data.accountCount === 0 ? '—' : <Money minor={data.totalBalance} />}
+        </SummaryCard>
       </div>
-      <div className="card">
-        <Section title="Balance">
-          <div className="stat">
-            <small>Total Balance</small>
-            {data.accountCount === 0 ? <span>No accounts yet.<br />Add an account to start tracking your money.</span> : <b><Money minor={data.totalBalance} /></b>}
+      <div className={`dash-cols${alerts.length ? '' : ' solo'}`}>
+        {data.budgetCount > 0 && (
+          <div className="card">
+            <Section title="Budget progress" actions={<Button variant="secondary" onClick={onBudgets}>View budgets</Button>}>
+              <ul className="attention">
+                {data.attention.map((l) => (
+                  <li key={l.categoryId}>
+                    <div className="attention-head"><strong>{l.name}</strong><span>{Math.round(l.percentUsed)}%</span></div>
+                    <Meter percent={l.percentUsed} status={l.status} label={`${l.name} budget used`} />
+                    <div><Money minor={l.spent} /> of <Money minor={l.budget} /></div>
+                    {l.over ? <span className="error">{l.remaining === 0 ? '⚠ Budget fully used' : <>⚠ Over budget by <Money minor={-l.remaining} /></>}</span> : <small><Money minor={l.remaining} /> remaining{l.status === 'warning' && ' · Near limit'}</small>}
+                  </li>
+                ))}
+              </ul>
+            </Section>
           </div>
-        </Section>
-      </div>
-      <div className="card">
-        <Section title="Needs Attention">
-          {data.budgetCount === 0 ? (
-            <State kind="empty" action={<Button variant="secondary" onClick={onBudgets}>Go to Budgets</Button>}>No budgets for this month.</State>
-          ) : (
-            <ul className="attention">
-              {data.attention.map((l) => (
-                <li key={l.categoryId}>
-                  <div className="attention-head"><strong>{l.name}</strong><span>{Math.round(l.percentUsed)}%</span></div>
-                  <Meter percent={l.percentUsed} over={l.over} label={`${l.name} budget used`} />
-                  <div><Money minor={l.spent} /> / <Money minor={l.budget} /></div>
-                  {l.over ? <span role="alert" className="error">{l.remaining === 0 ? '⚠ Budget fully used' : <>⚠ Over budget by <Money minor={-l.remaining} /></>}</span> : <small><Money minor={l.remaining} /> remaining</small>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
+        )}
+        {alerts.length > 0 && (
+          <div className="card">
+            <Section title="Needs attention">
+              <ul className="attention">
+                {alerts.map((a) => (
+                  <li key={a.kind}>
+                    {a.kind === 'sync-issue' && <span role="alert" className="error">⚠ {a.count} change{a.count === 1 ? '' : 's'} did not sync. Open Wallets → Transactions for details.</span>}
+                    {a.kind === 'pending' && <span>↻ {a.count} transaction change{a.count === 1 ? '' : 's'} waiting to sync. Not saved to the server yet.</span>}
+                    {a.kind === 'overspent' && a.lines.map((l) => (
+                      <span key={l.categoryId} role="alert" className="error">⚠ {l.name}: {l.remaining === 0 ? 'budget fully used' : <>over budget by <Money minor={-l.remaining} /></>}</span>
+                    ))}
+                    {a.kind === 'no-budgets' && <><span>No budgets set for this month.</span><Button variant="secondary" onClick={onBudgets}>Go to Budgets</Button></>}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          </div>
+        )}
       </div>
     </>
   )

@@ -57,3 +57,24 @@ export function buildDashboard(i: Omit<DashboardInputs, 'confirmed'>): Dashboard
 /** Saved wallet if still present, else the first; null when there are none. */
 export const pickWallet = (wallets: readonly Wallet[], savedId: string | null): Wallet | null =>
   wallets.find((w) => w.id === savedId) ?? wallets[0] ?? null
+
+export type AttentionLine = DashboardData['attention'][number]
+export type Alert =
+  | { kind: 'sync-issue'; count: number }
+  | { kind: 'overspent'; lines: AttentionLine[] }
+  | { kind: 'pending'; count: number }
+  | { kind: 'no-budgets' }
+
+/** Contextual alerts only: an empty list means nothing needs attention (the section is then not shown). Pending outbox items are never counted as synced. */
+export function attentionAlerts(d: DashboardData, items: readonly { wallet_id: string; status: string }[], walletId: string): Alert[] {
+  const mine = items.filter((i) => i.wallet_id === walletId)
+  const issues = mine.filter((i) => i.status === 'FAILED' || i.status === 'BLOCKED' || i.status === 'CONFLICT').length
+  const pending = mine.length - issues
+  const over = d.attention.filter((l) => l.over)
+  const out: Alert[] = []
+  if (issues) out.push({ kind: 'sync-issue', count: issues })
+  if (over.length) out.push({ kind: 'overspent', lines: over })
+  if (pending) out.push({ kind: 'pending', count: pending })
+  if (d.budgetCount === 0) out.push({ kind: 'no-budgets' })
+  return out
+}

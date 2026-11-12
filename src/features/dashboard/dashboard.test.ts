@@ -5,7 +5,7 @@ import type { Budget } from '../budgets/budget'
 import { currentMonth } from '../budgets/budget'
 import type { Category } from '../categories/category'
 import type { Wallet } from '../wallets/wallet'
-import { buildDashboard, pickWallet } from './dashboard'
+import { attentionAlerts, buildDashboard, pickWallet } from './dashboard'
 import { createDashboardService } from './dashboardService'
 
 const M = '2026-10-01'
@@ -175,5 +175,18 @@ describe('dashboard service', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const failing = deps({ income: async () => { throw new Error('boom') } })
     await expect(createDashboardService(failing as never).load('w', M)).rejects.toThrow("We couldn't load your financial summary")
+  })
+})
+
+describe('attentionAlerts', () => {
+  const line = (over: boolean) => ({ categoryId: 'c', name: 'Food', over, percentUsed: over ? 120 : 10, spent: 0, budget: 0, remaining: 0 }) as never
+  const data = (attention: never[], budgetCount = attention.length) => ({ attention, budgetCount }) as never
+  it('is empty when budgets are healthy and nothing is queued', () => {
+    expect(attentionAlerts(data([line(false)]), [], 'w')).toEqual([])
+  })
+  it('flags no budgets, overspent lines, pending and sync issues for this wallet only', () => {
+    const items = [{ wallet_id: 'w', status: 'PENDING' }, { wallet_id: 'w', status: 'FAILED' }, { wallet_id: 'other', status: 'PENDING' }]
+    expect(attentionAlerts(data([]), items, 'w').map((a) => a.kind)).toEqual(['sync-issue', 'pending', 'no-budgets'])
+    expect(attentionAlerts(data([line(true), line(false)]), [], 'w')).toMatchObject([{ kind: 'overspent', lines: [{ over: true }] }])
   })
 })
