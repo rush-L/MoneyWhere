@@ -203,11 +203,21 @@ button:disabled { opacity: 0.6; cursor: default; }
 @media (min-width: 1024px) { .budget-list { padding-bottom: 0; } }
 
 /* Accounts */
+.account-groups { display: grid; gap: var(--s-5); padding-bottom: 64px; } /* bottom space keeps the last card clear of the add button */
+.account-group { display: grid; gap: var(--s-3); }
+.group-head { display: flex; align-items: baseline; gap: var(--s-2); }
+.group-head small { font-weight: 400; color: var(--c-muted); }
+.group-note { margin: 0; color: var(--c-muted); font-size: var(--t-sm); }
 .account-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
-.account { display: grid; gap: var(--s-2); justify-items: start; overflow-wrap: anywhere; }
-.account-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s-2); width: 100%; }
+.account { display: grid; gap: var(--s-2); align-content: start; justify-items: start; min-width: 0; overflow-wrap: anywhere; }
+.account-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); width: 100%; }
+.account-holder, .account-opening { color: var(--c-muted); }
 .account-balance { display: grid; gap: 2px; }
-.account-balance b { font-size: var(--t-xl); }
+.account-balance small { color: var(--c-muted); }
+.account-balance b { font-size: var(--t-xl); font-weight: 700; }
+.account-tags { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+@media (min-width: 640px) { .account-list { grid-template-columns: 1fr 1fr; align-items: start; } }
+@media (min-width: 1024px) { .account-groups { padding-bottom: 0; } }
 
 /* Auth and Profile */
 .auth { box-sizing: border-box; width: 100%; max-width: 440px; margin: 0 auto; padding: var(--s-6) var(--s-4); display: grid; gap: var(--s-4); }

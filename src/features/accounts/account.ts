@@ -11,6 +11,50 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   loan: 'Loan',
 }
 
+/** Display groups. Credit Card and Loan only exist as types for now (spec 7), so they are grouped but behave like any account. */
+const CREDIT_TYPES: readonly AccountType[] = ['credit_card', 'loan']
+export const isCreditType = (t: AccountType) => CREDIT_TYPES.includes(t)
+
+export const ACCOUNT_GROUP_LABELS = { cash_bank: 'Cash & bank', credit_loans: 'Credit cards & loans' } as const
+export const CREDIT_GROUP_NOTE = 'Tracked like any other account for now. A negative balance means the account is below zero.'
+
+/**
+ * Accounts split into the two display groups, each keeping the order it was given (the server's creation order).
+ * A group with no accounts is omitted. Anything that is not a credit type lands in Cash & bank, so an account can
+ * never disappear from the page. No totals: this only partitions.
+ */
+export function groupAccounts<A extends { type: AccountType }>(accounts: readonly A[]): { id: keyof typeof ACCOUNT_GROUP_LABELS; label: string; accounts: A[] }[] {
+  const groups = [
+    { id: 'cash_bank' as const, label: ACCOUNT_GROUP_LABELS.cash_bank, accounts: accounts.filter((a) => !isCreditType(a.type)) },
+    { id: 'credit_loans' as const, label: ACCOUNT_GROUP_LABELS.credit_loans, accounts: accounts.filter((a) => isCreditType(a.type)) },
+  ]
+  return groups.filter((g) => g.accounts.length > 0)
+}
+
+/** "Below zero" is shown for Cash, E-wallet and Bank only. A negative Credit Card or Loan balance is normal for it and gets no badge. */
+export const isBelowZeroAsset = (a: Pick<Account, 'type' | 'currentBalanceMinor'>) => !isCreditType(a.type) && a.currentBalanceMinor < 0
+
+/**
+ * Whether an account's type and opening balance are locked and whether it may be deleted. The server only knows
+ * transactions it has (`hasTransactions`); a transaction still waiting in the outbox counts too, or the account would
+ * look unused. `pendingIds` comes from pendingAccountUse (the outbox's own rules).
+ */
+export function accountLock(a: Pick<Account, 'id' | 'hasTransactions'>, pendingIds: ReadonlySet<string>) {
+  const pendingOnly = !a.hasTransactions && pendingIds.has(a.id)
+  return { locked: a.hasTransactions || pendingOnly, pendingOnly, canDelete: !a.hasTransactions && !pendingOnly }
+}
+
+/** Why type and opening balance are locked. Two different reasons, so two different sentences; one place so card and dialog agree. */
+export const LOCK_NOTE = {
+  server: 'Account type and opening balance are locked because this account has transactions.',
+  pending: 'Account type and opening balance are locked until pending transactions sync.',
+} as const
+export const DELETE_NOTE = { server: "It can't be deleted.", pending: "It can't be deleted until they sync." } as const
+export const lockNote = (pendingOnly: boolean) => (pendingOnly ? LOCK_NOTE.pending : LOCK_NOTE.server)
+
+/** UX only (the database policies decide). An owner looking at a saved snapshot cannot write, so nothing is offered. */
+export const canManageAccounts = (role: string, showingSnapshot: boolean) => role === 'owner' && !showingSnapshot
+
 export interface Account {
   id: string
   walletId: string

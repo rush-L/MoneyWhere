@@ -3,9 +3,10 @@ import type { Account } from '../accounts/account'
 import type { Budget } from '../budgets/budget'
 import type { Category } from '../categories/category'
 import type { DashboardInputs } from '../dashboard/dashboard'
-import { projectAccounts, projectDashboard } from './localFinance'
+import { pendingAccountUse, projectAccounts, projectDashboard } from './localFinance'
 import type { OutboxItem } from './outbox/outbox'
 import { localBalances, mergeLocal, reconcile } from './outbox/projection'
+import type { TransactionRow } from '../transactions/transaction'
 import { expense } from './testing'
 
 const M = '2026-10-01'
@@ -123,5 +124,41 @@ describe('Realtime refresh = a new server baseline under the SAME outbox', () =>
     const s = snap({ accounts: [acct('cash', 90000)], spend: [] })
     const d = projectDashboard(s, mine, 'w1')
     expect(d.totalBalance).toBe(bal(mine, [acct('cash', 90000)])[0])
+  })
+})
+
+describe('pendingAccountUse (which accounts pending transactions reference)', () => {
+  const use = (items: OutboxItem[], confirmed: string[] = [], wallet = 'w1') => [...pendingAccountUse({ confirmed }, items, wallet)].sort()
+  const edit = (id: string, payload: ReturnType<typeof expense>, base: Partial<TransactionRow>, status: OutboxItem['status'] = 'PENDING'): OutboxItem =>
+    ({ ...item(id, payload, status), op: 'UPDATE', expected_version: 1, mutation_id: 'm', base: { id, version: 1, type: 'expense', account_id: 'cash', ...base } as TransactionRow })
+  const remove = (id: string): OutboxItem =>
+    ({ ...item(id, expense(), 'PENDING'), op: 'DELETE', payload: null, expected_version: 1, mutation_id: 'm', base: { id, version: 1, type: 'expense', account_id: 'cash' } as TransactionRow })
+
+  it('nothing pending, nothing referenced', () => expect(use([])).toEqual([]))
+  it('a pending income or expense references its account', () => {
+    expect(use([item('e', cashExpense(100))])).toEqual(['cash'])
+  })
+  it('a pending transfer references both the source and the destination', () => {
+    expect(use([item('t', transfer(100))])).toEqual(['bpi', 'gcash'])
+  })
+  it('PENDING, SYNCING and FAILED items count; BLOCKED and CONFLICT never do (same rule as balances)', () => {
+    for (const s of ['PENDING', 'SYNCING', 'FAILED'] as const) expect(use([item('x', cashExpense(1), s)])).toEqual(['cash'])
+    for (const s of ['BLOCKED', 'CONFLICT'] as const) expect(use([item('x', cashExpense(1), s)])).toEqual([])
+  })
+  it('another wallet\'s items are ignored', () => expect(use([item('x', cashExpense(1), 'PENDING', 'w2')])).toEqual([]))
+  it('an item the server already has is not listed (the account reports hasTransactions itself)', () => {
+    expect(use([item('e', cashExpense(100))], ['e'])).toEqual([])
+  })
+  it('a pending edit that moves a transaction onto an account references the new account', () => {
+    expect(use([edit('e', expense({ account_id: 'bank', category_id: 'groceries' }), { account_id: 'cash' })])).toEqual(['bank'])
+  })
+  it('a pending delete references nothing: the server row still marks its account as used', () => {
+    expect(use([remove('e')])).toEqual([])
+  })
+  it('each pending item is counted exactly as the balance projection counts it', () => {
+    // Same items through localBalances: the accounts whose balance moves are the accounts referenced.
+    const items = [item('t', transfer(100)), item('b', cashExpense(5), 'BLOCKED')]
+    const moved = projectAccounts({ accounts: [acct('bpi', 1000), acct('gcash', 1000), acct('cash', 1000)], confirmed: [] }, items, 'w1').filter((a) => a.currentBalanceMinor !== 1000).map((a) => a.id).sort()
+    expect(use(items)).toEqual(moved)
   })
 })

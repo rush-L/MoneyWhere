@@ -5,7 +5,7 @@ import type { createDashboardServiceFor } from '../dashboard/dashboardService'
 import type { createTransactionService } from '../transactions/transactionService'
 import { readThrough, type Cache, type ReadResult } from './db/cache'
 import type { OutboxItem } from './outbox/outbox'
-import { localBalances, localSpend } from './outbox/projection'
+import { localBalances, localSpend, pendingEffect } from './outbox/projection'
 
 /**
  * Local financial state = server baseline (network, else the per-user snapshot) + pending outbox items, replayed
@@ -56,6 +56,21 @@ export function loadDashboard(
     cache?.put(accountsKey(userId, walletId), { accounts: d.accounts, confirmed: d.confirmed }).catch((e) => console.error('[offline] cache write failed', e))
     return d
   }, onSettled)
+}
+
+/**
+ * Accounts referenced by this wallet's pending transactions: the source and, for a transfer, the destination.
+ * Built on pendingEffect, so the same items count here as in balances (BLOCKED and CONFLICT never do). Rows the server
+ * already has are not listed: their accounts report `hasTransactions` themselves.
+ */
+export function pendingAccountUse(s: { confirmed: readonly string[] }, items: readonly OutboxItem[], walletId: string): Set<string> {
+  const e = pendingEffect(s.confirmed.map((id) => ({ id })), items, walletId)
+  const ids = new Set<string>()
+  for (const t of [...e.added, ...e.overlaid.values()]) {
+    ids.add(t.account_id)
+    if (t.destination_account_id) ids.add(t.destination_account_id)
+  }
+  return ids
 }
 
 export const projectAccounts = (s: { accounts: readonly Account[]; confirmed: readonly string[] }, items: readonly OutboxItem[], walletId: string): Account[] =>

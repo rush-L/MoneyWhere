@@ -3,17 +3,16 @@ import { formatMinor } from '../../domain/finance'
 import { supabase } from '../../lib/supabase'
 import { useOffline, useWatchWallet } from '../offline/hooks/OfflineProvider'
 import type { ReadResult } from '../offline/db/cache'
-import { loadAccounts, projectAccounts, type AccountsSnapshot } from '../offline/localFinance'
-import { staleNote } from '../offline/syncLabels'
+import { loadAccounts, pendingAccountUse, projectAccounts, type AccountsSnapshot } from '../offline/localFinance'
+import { staleNote, syncCounts } from '../offline/syncLabels'
 import { createTransactionService } from '../transactions/transactionService'
 import type { Wallet } from '../wallets/wallet'
-import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABELS, parseNewAccount, type Account } from './account'
+import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABELS, accountLock, canManageAccounts, CREDIT_GROUP_NOTE, DELETE_NOTE, lockNote, ACCOUNT_GROUP_LABELS, groupAccounts, isCreditType, parseNewAccount, type Account } from './account'
+import { AccountCard } from './AccountCard'
 import { createAccountService } from './accountService'
-import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
 import { Field } from '../../ui/Field'
-import { Money } from '../../ui/Money'
 import { PageHeader } from '../../ui/PageHeader'
 import { State } from '../../ui/State'
 
@@ -40,7 +39,7 @@ export function AccountsPage({ wallet, userId }: { wallet: Wallet; userId: strin
   const [creating, setCreating] = useState(false) // true while saving (create or edit)
   const [formError, setFormError] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false) // dialog visibility only; the form state above stays on this page
-  const isOwner = wallet.role === 'owner' // UX only; RLS enforces it
+  const isOwner = canManageAccounts(wallet.role, stale) // UX only; RLS enforces it. Never offered from an unconfirmed snapshot
 
   const load = useCallback(
     (initial = false) => {
@@ -70,6 +69,15 @@ export function AccountsPage({ wallet, userId }: { wallet: Wallet; userId: strin
   // Server baseline + pending outbox items (the same projection the Dashboard and Transactions use).
   const accounts = useMemo(() => (snap ? projectAccounts(snap, items, wallet.id) : null), [snap, items, wallet.id])
 
+  // Accounts that queued transactions use. They count as used, so type/opening balance stay locked and delete is off.
+  const pendingUse = useMemo(() => (snap ? pendingAccountUse(snap, items, wallet.id) : new Set<string>()), [snap, items, wallet.id])
+  const unsynced = syncCounts(items, wallet.id).counted // already inside the balances above
+
+  function openAdd() {
+    setFormError(null)
+    setFormOpen(true)
+  }
+
   async function save(ev: FormEvent) {
     ev.preventDefault()
     const parsed = parseNewAccount(form)
@@ -77,7 +85,7 @@ export function AccountsPage({ wallet, userId }: { wallet: Wallet; userId: strin
     setCreating(true)
     setFormError(null)
     try {
-      if (editing) await service!.update(editing, parsed.value)
+      if (editing) await service!.update({ ...editing, hasTransactions: accountLock(editing, pendingUse).locked }, parsed.value) // same payload rules; pending use counts as used
       else await service!.create(wallet.id, parsed.value)
       setEditing(null)
       setForm(EMPTY)
@@ -109,6 +117,12 @@ export function AccountsPage({ wallet, userId }: { wallet: Wallet; userId: strin
   }
   async function remove(a: Account) {
     setConfirmDelete(null)
+    // Checked again at click time against the latest queue: a transaction may have been queued since the button rendered.
+    const now = snap ? pendingAccountUse(snap, itemsRef.current, wallet.id) : new Set<string>()
+    if (accountLock(a, now).pendingOnly) {
+      setLoadError("This account can't be deleted yet: transactions waiting to sync use it.")
+      return
+    }
     try {
       await service!.remove(a)
       if (editing?.id === a.id) cancelEdit()
@@ -118,74 +132,88 @@ export function AccountsPage({ wallet, userId }: { wallet: Wallet; userId: strin
     }
   }
 
-  const locked = editing?.hasTransactions ?? false
+  const lock = editing ? accountLock(editing, pendingUse) : null
+  const locked = lock?.locked ?? false
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
+
+  function card(a: Account) {
+    const l = accountLock(a, pendingUse)
+    return (
+      <AccountCard key={a.id} account={a} pendingOnly={l.pendingOnly}>
+        {isOwner && l.locked && (
+          <small>{lockNote(l.pendingOnly)} {l.pendingOnly ? DELETE_NOTE.pending : DELETE_NOTE.server}</small>
+        )}
+        {isOwner && (
+          <div className="actions">
+            <Button variant="secondary" onClick={() => startEdit(a)}>Edit</Button>
+            {l.canDelete &&
+              (confirmDelete === a.id ? (
+                <>
+                  <Button variant="danger" onClick={() => void remove(a)}>Confirm delete</Button>
+                  <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+                </>
+              ) : (
+                <Button variant="ghost" className="text-danger" onClick={() => setConfirmDelete(a.id)}>Delete</Button>
+              ))}
+          </div>
+        )}
+      </AccountCard>
+    )
+  }
 
   return (
     <>
       <PageHeader
         title="Accounts"
         level={2}
-        actions={isOwner ? <Button onClick={() => { setFormError(null); setFormOpen(true) }}>+ Add account</Button> : undefined}
+        actions={isOwner ? <Button className="add-desktop" onClick={openAdd}>+ Add account</Button> : undefined}
       />
+      {isOwner && <button type="button" className="fab" aria-label="Add account" onClick={openAdd}>+</button>}
       {loadError && <State kind="error">{loadError}</State>}
       {stale && <p role="status" className="note">{staleNote(checking)}</p>}
       {!accounts && !loadError && <State kind="loading">Loading accounts…</State>}
-      {accounts?.length === 0 && <State kind="empty">No accounts yet.{isOwner ? ' Use + Add account to create your first one.' : ''}</State>}
+      {accounts?.length === 0 && (
+        <State kind="empty" action={isOwner ? <Button onClick={openAdd}>Add your first account</Button> : undefined}>No accounts yet.</State>
+      )}
       {accounts && accounts.length > 0 && (
-        <ul className="account-list">
-          {accounts.map((a) => (
-            <li key={a.id} className="card account">
-              <div className="account-top">
-                <strong>{a.name}</strong>
-                <Badge>{ACCOUNT_TYPE_LABELS[a.type]}</Badge>
-              </div>
-              {a.holder && <small>Holder: {a.holder}</small>}
-              <div className="account-balance">
-                <small>Current balance</small>
-                <b><Money minor={a.currentBalanceMinor} /></b>
-              </div>
-              <small>Opening balance <Money minor={a.openingBalanceMinor} /></small>
-              {a.hasTransactions && <Badge tone="info">Has transactions</Badge>}
-              {isOwner && a.hasTransactions && <small>Its type and opening balance are locked, and it can't be deleted.</small>}
-              {isOwner && (
-                <div className="actions">
-                  <Button variant="secondary" onClick={() => startEdit(a)}>Edit</Button>
-                  {!a.hasTransactions &&
-                    (confirmDelete === a.id ? (
-                      <>
-                        <Button variant="danger" onClick={() => void remove(a)}>Confirm delete</Button>
-                        <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-                      </>
-                    ) : (
-                      <Button variant="ghost" className="text-danger" onClick={() => setConfirmDelete(a.id)}>Delete</Button>
-                    ))}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          {unsynced > 0 && <p role="status" className="note info">Balances include {unsynced} transaction change{unsynced === 1 ? '' : 's'} not yet saved to the server.</p>}
+          <div className="account-groups">
+            {groupAccounts(accounts).map((g) => (
+              <section key={g.id} className="account-group" aria-label={g.label}>
+                <h3 className="group-head">{g.label} <small>· {g.accounts.length} account{g.accounts.length === 1 ? '' : 's'}</small></h3>
+                {g.id === 'credit_loans' && <p className="group-note">{CREDIT_GROUP_NOTE}</p>}
+                <ul className="account-list">{g.accounts.map(card)}</ul>
+              </section>
+            ))}
+          </div>
+        </>
       )}
       {isOwner ? (
         <Dialog open={formOpen} onClose={closeForm} dismissible={!creating} title={editing ? `Edit ${editing.name}` : 'New account'}>
           <form onSubmit={(e) => void save(e)} noValidate>
             <Field label="Account name"><input value={form.name} maxLength={50} onChange={set('name')} disabled={creating} /></Field>
-            <Field label="Type" hint={locked ? 'Locked: this account has transactions.' : undefined}>
+            <Field label="Type">
               <select value={form.type} onChange={set('type')} disabled={creating || locked}>
-                {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
+                <optgroup label={ACCOUNT_GROUP_LABELS.cash_bank}>
+                  {ACCOUNT_TYPES.filter((t) => !isCreditType(t)).map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
+                </optgroup>
+                <optgroup label={ACCOUNT_GROUP_LABELS.credit_loans}>
+                  {ACCOUNT_TYPES.filter(isCreditType).map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
+                </optgroup>
               </select>
             </Field>
-            <Field label="Opening balance (₱)" hint={locked ? 'Locked: this account has transactions.' : undefined}>
-              <input inputMode="decimal" value={form.openingBalance} placeholder="0.00" onChange={set('openingBalance')} disabled={creating || locked} />
+            <Field label="Opening balance (₱)">
+              <input className="amount-input" inputMode="decimal" value={form.openingBalance} placeholder="0.00" onChange={set('openingBalance')} disabled={creating || locked} />
             </Field>
             <Field label="Holder (optional)"><input value={form.holder} maxLength={50} onChange={set('holder')} disabled={creating} /></Field>
             <small>Currency: {wallet.currency} (same as the wallet)</small>
-            {locked && <small>This account has transactions, so only its name and holder can change.</small>}
+            {locked && <small>{lockNote(!!lock?.pendingOnly)} Name and holder can still be changed.</small>}
             {formError && <p role="alert" className="error">{formError}</p>}
             <Button type="submit" disabled={creating}>{creating ? 'Saving…' : editing ? 'Save Changes' : 'Create Account'}</Button>
           </form>
         </Dialog>
-      ) : (
+      ) : stale ? null : (
         <p className="note info">Only the wallet owner can add accounts.</p>
       )}
     </>
