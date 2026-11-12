@@ -13,7 +13,7 @@ import { createDashboardServiceFor } from './dashboardService'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
 import { Field } from '../../ui/Field'
-import { Meter } from '../../ui/Meter'
+import { BudgetProgress } from '../../ui/BudgetProgress'
 import { Money } from '../../ui/Money'
 import { PageHeader } from '../../ui/PageHeader'
 import { Section } from '../../ui/Section'
@@ -138,10 +138,7 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
               <ul className="attention">
                 {data.attention.map((l) => (
                   <li key={l.categoryId}>
-                    <div className="attention-head"><strong>{l.name}</strong><span>{Math.round(l.percentUsed)}%</span></div>
-                    <Meter percent={l.percentUsed} status={l.status} label={`${l.name} budget used`} />
-                    <div><Money minor={l.spent} /> of <Money minor={l.budget} /></div>
-                    {l.over ? <span className="error">{l.remaining === 0 ? '⚠ Budget fully used' : <>⚠ Over budget by <Money minor={-l.remaining} /></>}</span> : <small><Money minor={l.remaining} /> remaining{l.status === 'warning' && ' · Near limit'}</small>}
+                    <BudgetProgress name={l.name} line={l} />
                   </li>
                 ))}
               </ul>

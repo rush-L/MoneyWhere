@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { budgetFromRow, currentMonth, isMonth, monthLabel, parseBudget, shiftMonth } from './budget'
+import { summarizeBudgets } from '../../domain/finance'
+import { budgetFromRow, budgetRows, currentMonth, isMonth, monthLabel, parseBudget, shiftMonth } from './budget'
 
 describe('months', () => {
   it('shifts across year boundaries', () => {
@@ -30,4 +31,22 @@ describe('parseBudget', () => {
 
 describe('budgetFromRow', () => {
   it('maps columns', () => expect(budgetFromRow({ id: 'i', wallet_id: 'w', category_id: 'c', month: '2026-10-01', amount_minor: 5 })).toEqual({ id: 'i', walletId: 'w', categoryId: 'c', month: '2026-10-01', amountMinor: 5 }))
+})
+
+describe('budgetRows', () => {
+  const b = (id: string, categoryId: string, amountMinor: number) => ({ id, walletId: 'w', categoryId, month: '2026-11-01', amountMinor })
+  it('pairs each budget with its status line, most used first', () => {
+    const budgets = [b('b1', 'food', 100000), b('b2', 'bills', 50000), b('b3', 'fun', 20000)]
+    const { lines } = summarizeBudgets(budgets, new Map([['food', 85000], ['bills', 10000], ['fun', 25000]]))
+    const rows = budgetRows(budgets, lines)
+    expect(rows.map((r) => r.budget.id)).toEqual(['b3', 'b1', 'b2']) // 125%, 85%, 20%
+    expect(rows.map((r) => r.line.status)).toEqual(['exceeded', 'warning', 'normal'])
+    expect(rows[0]!.line.categoryId).toBe(rows[0]!.budget.categoryId)
+  })
+  it('keeps zero-spend budgets and drops lines with no matching budget', () => {
+    const budgets = [b('b1', 'food', 100000)]
+    const { lines } = summarizeBudgets(budgets, new Map())
+    expect(budgetRows(budgets, lines)).toHaveLength(1)
+    expect(budgetRows([], lines)).toEqual([])
+  })
 })

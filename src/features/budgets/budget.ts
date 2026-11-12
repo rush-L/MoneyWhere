@@ -1,4 +1,4 @@
-import { assertMinor, parseMinor, type Minor } from '../../domain/finance'
+import { assertMinor, parseMinor, type BudgetLine, type Minor } from '../../domain/finance'
 
 export interface Budget {
   id: string
@@ -23,6 +23,18 @@ export const budgetFromRow = (r: BudgetRow): Budget => ({
 })
 
 // Months are "YYYY-MM-01" strings; arithmetic is on the numbers, never on a Date in local time.
+
+/**
+ * Budgets paired with their domain status line, in the domain's order (most used first). Joins only; every figure
+ * comes from summarizeBudgets. One budget per category and month is a database rule, so the category is the key.
+ */
+export function budgetRows(budgets: readonly Budget[], lines: readonly BudgetLine[]): { budget: Budget; line: BudgetLine }[] {
+  const byCategory = new Map(budgets.map((b) => [b.categoryId, b]))
+  return lines.flatMap((line) => {
+    const budget = byCategory.get(line.categoryId)
+    return budget ? [{ budget, line }] : []
+  })
+}
 
 export const isMonth = (s: string) => /^\d{4}-(0[1-9]|1[0-2])-01$/.test(s)
 

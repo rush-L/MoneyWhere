@@ -3,6 +3,7 @@ import type { Account } from '../accounts/account'
 import type { Budget } from '../budgets/budget'
 import type { SpendRow } from '../budgets/budgetService'
 import type { Category } from '../categories/category'
+import { syncCounts } from '../offline/syncLabels'
 import type { Wallet } from '../wallets/wallet'
 
 export const ATTENTION_COUNT = 3
@@ -67,9 +68,7 @@ export type Alert =
 
 /** Contextual alerts only: an empty list means nothing needs attention (the section is then not shown). Pending outbox items are never counted as synced. */
 export function attentionAlerts(d: DashboardData, items: readonly { wallet_id: string; status: string }[], walletId: string): Alert[] {
-  const mine = items.filter((i) => i.wallet_id === walletId)
-  const issues = mine.filter((i) => i.status === 'FAILED' || i.status === 'BLOCKED' || i.status === 'CONFLICT').length
-  const pending = mine.length - issues
+  const { issues, pending } = syncCounts(items, walletId)
   const over = d.attention.filter((l) => l.over)
   const out: Alert[] = []
   if (issues) out.push({ kind: 'sync-issue', count: issues })

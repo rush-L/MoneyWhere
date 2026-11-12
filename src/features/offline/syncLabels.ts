@@ -4,6 +4,16 @@ import type { OutboxStatus } from './outbox/outbox'
 export const staleNote = (revalidating: boolean) =>
   revalidating ? 'Showing data saved on this device. Checking for updates…' : 'Showing data saved on this device. Reconnect to refresh.'
 
+/**
+ * Unsynced changes of one wallet. `issues`: FAILED, BLOCKED or CONFLICT (need attention). `pending`: the rest.
+ * `counted`: those that move the figures shown on screen (projection ignores BLOCKED and CONFLICT items).
+ */
+export function syncCounts(items: readonly { wallet_id: string; status: string }[], walletId: string): { issues: number; pending: number; counted: number } {
+  const mine = items.filter((i) => i.wallet_id === walletId)
+  const issues = mine.filter((i) => i.status === 'FAILED' || i.status === 'BLOCKED' || i.status === 'CONFLICT').length
+  return { issues, pending: mine.length - issues, counted: mine.filter((i) => i.status !== 'BLOCKED' && i.status !== 'CONFLICT').length }
+}
+
 export type SyncTone = 'info' | 'warn' | 'error'
 
 /**

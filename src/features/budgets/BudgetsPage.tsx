@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { calculateBudgetStatus, formatMinor, spendingByBudgetCategory } from '../../domain/finance'
+import { formatMinor, spendingByBudgetCategory, summarizeBudgets, type BudgetLine } from '../../domain/finance'
 import { supabase } from '../../lib/supabase'
 import type { Category } from '../categories/category'
 import { readThrough, type ReadResult } from '../offline/db/cache'
 import { useOffline, useWatchWallet } from '../offline/hooks/OfflineProvider'
 import { budgetsKey } from '../offline/localFinance'
 import { localSpend } from '../offline/outbox/projection'
-import { staleNote } from '../offline/syncLabels'
+import { staleNote, syncCounts } from '../offline/syncLabels'
 import { createCategoryService } from '../categories/categoryService'
 import type { Wallet } from '../wallets/wallet'
-import { currentMonth, monthLabel, parseBudget, parseBudgetAmount, shiftMonth, type Budget } from './budget'
+import { budgetRows, currentMonth, monthLabel, parseBudget, parseBudgetAmount, shiftMonth, type Budget } from './budget'
 import { createBudgetService, type SpendRow } from './budgetService'
+import { Badge } from '../../ui/Badge'
+import { BudgetProgress } from '../../ui/BudgetProgress'
 import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
 import { Field } from '../../ui/Field'
-import { Meter } from '../../ui/Meter'
 import { Money } from '../../ui/Money'
 import { PageHeader } from '../../ui/PageHeader'
 import { State } from '../../ui/State'
+import { SummaryCard } from '../../ui/SummaryCard'
 
 type BudgetSnapshot = { cats: Category[]; budgets: Budget[]; spend: SpendRow[] }
 
@@ -86,7 +88,15 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
   const loaded = data?.month === month ? data : null // hides the previous month's rows while the next one loads
   // spending = server rows + pending local expenses
   const spent = loaded && categories ? spendingByBudgetCategory(localSpend(loaded.spend, [], items, wallet.id), categories, month) : new Map<string, number>()
-  const budgets = [...(loaded?.budgets ?? [])].sort((a, b) => (nameOf.get(a.categoryId) ?? '').localeCompare(nameOf.get(b.categoryId) ?? ''))
+  const summary = loaded ? summarizeBudgets(loaded.budgets, spent) : null
+  const rows = loaded && summary ? budgetRows(loaded.budgets, summary.lines) : [] // most used first, like the Dashboard
+  const unsynced = syncCounts(items, wallet.id).counted // pending local expenses are already inside `spent`
+  const isCurrent = month === currentMonth()
+
+  function openAdd() {
+    setFormError(null)
+    setAddOpen(true)
+  }
 
   function add(ev: FormEvent) {
     ev.preventDefault()
@@ -102,49 +112,39 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
     void run(() => service!.updateAmount(editing!.id, amount), () => setEditing(null))
   }
 
-  function card(b: Budget) {
-    const s = calculateBudgetStatus(b.amountMinor, spent.get(b.categoryId) ?? 0)
+  function card({ budget: b, line }: { budget: Budget; line: BudgetLine }) {
     const name = nameOf.get(b.categoryId) ?? 'Category'
     return (
       <li key={b.id} className="card budget">
-        <strong>{name}</strong>
-        <Meter percent={s.percentUsed} status={s.status} label={`${name} budget used`} />
-        <div><Money minor={s.spent} /> / <Money minor={s.budget} /></div>
-        <div>
-          {s.over ? (
-            <span role="alert" className="error">{s.remaining === 0 ? 'Budget fully used' : <>Over budget by <Money minor={-s.remaining} /></>}</span>
-          ) : (
-            <><Money minor={s.remaining} /> remaining</>
-          )}
-          {' · '}{s.percentUsed.toFixed(1)}% used{s.status === 'warning' && ' · Near limit'}
-        </div>
-        {isOwner && editing?.id === b.id && (
-          <form onSubmit={saveEdit} noValidate>
-            <Field label="Budget amount (₱)">
-              <input inputMode="decimal" value={editing.amount} onChange={(e) => setEditing({ id: b.id, amount: e.target.value })} disabled={busy} />
-            </Field>
-            <div className="actions">
-              <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
-              <Button variant="ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
-            </div>
-          </form>
-        )}
-        {isOwner && editing?.id !== b.id && (
-          confirmDelete === b.id ? (
-            <>
-              <small>Delete this budget? Your transactions and balances are not affected.</small>
+        <BudgetProgress name={name} line={line}>
+          {isOwner && editing?.id === b.id && (
+            <form onSubmit={saveEdit} noValidate>
+              <Field label="Budget amount (₱)">
+                <input inputMode="decimal" value={editing.amount} onChange={(e) => setEditing({ id: b.id, amount: e.target.value })} disabled={busy} />
+              </Field>
               <div className="actions">
-                <Button variant="danger" disabled={busy} onClick={() => void run(() => service!.remove(b.id), () => setConfirmDelete(null))}>Confirm delete</Button>
-                <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+                <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
+                <Button variant="ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
               </div>
-            </>
-          ) : (
-            <div className="actions">
-              <Button variant="secondary" onClick={() => { setEditing({ id: b.id, amount: formatMinor(b.amountMinor) }); setConfirmDelete(null); setFormError(null) }}>Edit</Button>
-              <Button variant="ghost" className="text-danger" onClick={() => { setConfirmDelete(b.id); setFormError(null) }}>Delete</Button>
-            </div>
-          )
-        )}
+            </form>
+          )}
+          {isOwner && editing?.id !== b.id && (
+            confirmDelete === b.id ? (
+              <>
+                <small>Delete this budget? Your transactions and balances are not affected.</small>
+                <div className="actions">
+                  <Button variant="danger" disabled={busy} onClick={() => void run(() => service!.remove(b.id), () => setConfirmDelete(null))}>Confirm delete</Button>
+                  <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+                </div>
+              </>
+            ) : (
+              <div className="actions">
+                <Button variant="secondary" onClick={() => { setEditing({ id: b.id, amount: formatMinor(b.amountMinor) }); setConfirmDelete(null); setFormError(null) }}>Edit</Button>
+                <Button variant="ghost" className="text-danger" onClick={() => { setConfirmDelete(b.id); setFormError(null) }}>Delete</Button>
+              </div>
+            )
+          )}
+        </BudgetProgress>
       </li>
     )
   }
@@ -156,19 +156,41 @@ export function BudgetsPage({ wallet, userId, onBack }: { wallet: Wallet; userId
         level={onBack ? 1 : 2}
         onBack={onBack}
         backLabel="Dashboard"
-        actions={isOwner ? <Button onClick={() => { setFormError(null); setAddOpen(true) }}>+ Add budget</Button> : undefined}
+        actions={isOwner ? <Button className="add-desktop" onClick={openAdd}>+ Add budget</Button> : undefined}
       />
+      {isOwner && <button type="button" className="fab" aria-label="Add budget" onClick={openAdd}>+</button>}
       <nav aria-label="Budget month" className="month-nav">
-        <strong aria-current="date">{monthLabel(month)}</strong>
-        <Button variant="secondary" onClick={() => setMonth(shiftMonth(month, -1))}>‹ {monthLabel(shiftMonth(month, -1))}</Button>
-        <Button variant="secondary" onClick={() => setMonth(shiftMonth(month, 1))}>{monthLabel(shiftMonth(month, 1))} ›</Button>
+        <Button variant="secondary" aria-label={`Previous month, ${monthLabel(shiftMonth(month, -1))}`} onClick={() => setMonth(shiftMonth(month, -1))}>‹</Button>
+        <div className="month-current">
+          <strong aria-current="date">{monthLabel(month)}</strong>
+          {isCurrent && <Badge tone="info">Current month</Badge>}
+        </div>
+        <Button variant="secondary" aria-label={`Next month, ${monthLabel(shiftMonth(month, 1))}`} onClick={() => setMonth(shiftMonth(month, 1))}>›</Button>
       </nav>
       {loadError && online && <State kind="error">{loadError}</State>}
       {!online && !loaded && <State kind="empty">Budget data isn't available offline yet. Connect to the internet to see your budgets.</State>}
       {stale && loaded && <p role="status" className="note">{staleNote(checking)}</p>}
       {!loaded && !loadError && online && <State kind="loading">Loading budgets…</State>}
-      {loaded && budgets.length === 0 && <State kind="empty">No budgets for {monthLabel(month)}.{isOwner ? ' Use + Add budget to create one.' : ''}</State>}
-      {budgets.length > 0 && <ul className="budget-list">{budgets.map(card)}</ul>}
+      {loaded && rows.length === 0 && (
+        <State kind="empty" action={isOwner ? <Button onClick={openAdd}>Add your first budget</Button> : undefined}>No budgets for {monthLabel(month)}.</State>
+      )}
+      {summary && rows.length > 0 && (
+        <>
+          {unsynced > 0 && <p role="status" className="note info">Includes {unsynced} transaction change{unsynced === 1 ? '' : 's'} not yet saved to the server.</p>}
+          <div className="summary-grid three">
+            <SummaryCard label="Budgeted" note="Total of this month's limits"><Money minor={summary.totalBudgeted} /></SummaryCard>
+            <SummaryCard label="Spent in budgets" note="Expenses in budgeted categories"><Money minor={summary.budgetedSpent} /></SummaryCard>
+            <SummaryCard
+              label="Remaining budget"
+              tone={summary.totalRemaining < 0 ? 'over' : undefined}
+              note={summary.totalRemaining < 0 ? <Badge tone="over">Over budget</Badge> : 'Budgeted minus spent. Not cash on hand.'}
+            >
+              <Money minor={summary.totalRemaining} />
+            </SummaryCard>
+          </div>
+          <ul className="budget-list">{rows.map(card)}</ul>
+        </>
+      )}
       {formError && !addOpen && <p role="alert" className="error">{formError}</p>}
       {isOwner ? (
         <Dialog open={addOpen} onClose={() => setAddOpen(false)} dismissible={!busy} title={`New budget for ${monthLabel(month)}`}>

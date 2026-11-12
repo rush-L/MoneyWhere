@@ -99,7 +99,6 @@ h2, p { overflow-wrap: anywhere; }
 .attention { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-4); }
 .attention li { display: grid; gap: var(--s-2); }
 .attention li > .btn { justify-self: start; }
-.attention-head { display: flex; justify-content: space-between; gap: var(--s-2); width: 100%; }
 
 /* Wallet list rows */
 .wallet-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
@@ -186,16 +185,22 @@ button:disabled { opacity: 0.6; cursor: default; }
 @media (min-width: 1024px) { .add-desktop { display: inline-flex; } .fab { display: none; } .tx-day:last-of-type { padding-bottom: 0; } }
 
 /* Budgets */
-.month-nav { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
-.month-nav strong { grid-column: 1 / -1; text-align: center; font-size: var(--t-lg); }
+.month-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.month-nav .btn { min-width: var(--tap); padding: 0 var(--s-3); font-size: var(--t-xl); line-height: 1; }
+.month-current { display: grid; justify-items: center; gap: 2px; min-width: 0; text-align: center; }
+.month-current strong { font-size: var(--t-lg); }
+.budget-list { list-style: none; margin: 0; padding: 0 0 64px; display: grid; gap: var(--s-3); } /* bottom space keeps the last card clear of the add button */
+.budget { align-content: start; }
+.budget-progress { display: grid; gap: var(--s-2); min-width: 0; overflow-wrap: anywhere; }
+.bp-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.bp-figures { display: flex; justify-content: space-between; gap: var(--s-2); }
+.bp-remaining { color: var(--c-muted); }
+.summary-grid.three { grid-template-columns: 1fr; }
 @media (min-width: 640px) {
-  .month-nav { grid-template-columns: 1fr auto 1fr; align-items: center; }
-  .month-nav strong { grid-column: 2; grid-row: 1; padding: 0 var(--s-3); }
-  .month-nav .btn:first-of-type { grid-column: 1; grid-row: 1; justify-self: start; }
-  .month-nav .btn:last-of-type { grid-column: 3; grid-row: 1; justify-self: end; }
+  .budget-list { grid-template-columns: 1fr 1fr; align-items: start; }
+  .summary-grid.three { grid-template-columns: repeat(3, 1fr); }
 }
-.budget-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
-.budget { display: grid; gap: var(--s-2); overflow-wrap: anywhere; }
+@media (min-width: 1024px) { .budget-list { padding-bottom: 0; } }
 
 /* Accounts */
 .account-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
