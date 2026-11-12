@@ -248,6 +248,21 @@ button:disabled { opacity: 0.6; cursor: default; }
 @media (min-width: 640px) { .category-list { grid-template-columns: 1fr 1fr; align-items: start; } }
 @media (min-width: 1024px) { .category-list { padding-bottom: 0; } }
 
+/* Members: one column at every width (the wallet shell is only ~880px) */
+.members-page { display: grid; gap: var(--s-4); padding-bottom: 64px; } /* bottom space keeps the last card clear of the add button */
+.member-list, .invite-list { list-style: none; margin: 0; padding: 0; }
+.member-row, .invite-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2) var(--s-3); padding: var(--s-3) 0; }
+.member-row + .member-row, .invite-row + .invite-row { border-top: 1px solid var(--c-border); }
+.member-main { display: grid; gap: var(--s-1); flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.member-row > .btn, .invite-row > .btn { margin-left: auto; } /* right-aligned whether beside the text or wrapped below it */
+.member-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.member-meta small, .invite-row small { color: var(--c-muted); }
+.refresh-warning { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2) var(--s-3); }
+.invite-box { display: grid; gap: var(--s-2); padding: var(--s-3); background: var(--c-brand-soft); border-radius: var(--r-1); }
+.invite-box .note { margin: 0; }
+.consequences { margin: 0 0 var(--s-4); padding-left: var(--s-5); display: grid; gap: var(--s-2); }
+@media (min-width: 1024px) { .members-page { padding-bottom: 0; } }
+
 /* Transaction search and filters */
 .filters { display: grid; gap: var(--s-2); }
 .filter-panel { border: 1px solid var(--c-border); border-radius: var(--r-1); padding: var(--s-2) var(--s-3); display: grid; gap: var(--s-3); }

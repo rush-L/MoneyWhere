@@ -1,17 +1,27 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { classifyFailure } from '../offline/sync/errors'
 import type { CreatedInvitation, Member, PendingInvitation } from './membership'
 import type { WalletRole } from './wallet'
 
-/** Message is always safe to show to the user. */
-export class MembershipError extends Error {}
+export type MembershipErrorKind = 'network' | 'forbidden' | 'other'
 
-type Err = { code?: string; message?: string }
+/** Message is always safe to show to the user. `kind` says why, so the page can tell "offline" from "not allowed" from a server error. */
+export class MembershipError extends Error {
+  kind: MembershipErrorKind
+  constructor(message: string, kind: MembershipErrorKind = 'other') {
+    super(message)
+    this.kind = kind
+  }
+}
+
+type Err = { code?: string; message?: string; status?: number }
 const RATE_LIMITED = '54000' // raised by the database rate limiter
 
 /** Logs the error code and message only: never request parameters, which can hold an invitation token. */
 function fail(message: string, err: Err): never {
   console.error('[membership]', err.code, err.message)
-  throw new MembershipError(err.code === RATE_LIMITED ? 'Too many attempts. Please wait a while and try again.' : message)
+  const kind: MembershipErrorKind = classifyFailure(err) === 'network' ? 'network' : err.code === '42501' || err.status === 401 || err.status === 403 ? 'forbidden' : 'other'
+  throw new MembershipError(err.code === RATE_LIMITED ? 'Too many attempts. Please wait a while and try again.' : message, kind)
 }
 
 export type InvitationPreview = { valid: false } | { valid: true; walletName: string; alreadyMember: boolean }

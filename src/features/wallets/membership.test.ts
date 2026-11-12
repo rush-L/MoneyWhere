@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { FORMER_MEMBER, inviteLink, memberLabels, parseInviteHash, participantLabel, type Member } from './membership'
+import { attemptLeave, FORMER_MEMBER, inviteLink, LEAVE_BLOCKED_MESSAGE, loadFailed, loadSucceeded, MEMBERS_INITIAL, memberCountLabel, memberLabels, membersView, parseInviteHash, participantLabel, refreshWarning, transferConsequences, validAvatarUrl, type Member, type MembersFailure } from './membership'
 import { createMembershipService, MembershipError } from './membershipService'
 
 const TOKEN = 'ab12'.repeat(16) // 64 hex chars (a test value, not a real secret)
@@ -126,5 +126,189 @@ describe('membership service', () => {
     await expect(client({ error: { code: '42501' } }).svc.transferOwnership('w', 'u')).rejects.toThrow('Only the wallet owner can transfer ownership.')
     await expect(client({ error: { code: 'P0002' } }).svc.transferOwnership('w', 'u')).rejects.toThrow('That person is no longer a member of this wallet.')
     await expect(client({ error: { message: 'TypeError: Failed to fetch' } }).svc.transferOwnership('w', 'u')).rejects.toThrow('Could not transfer ownership. Please try again.')
+  })
+})
+
+describe('member count and avatars', () => {
+  it('counts', () => {
+    expect(memberCountLabel(1)).toBe('1 member')
+    expect(memberCountLabel(3)).toBe('3 members')
+    expect(memberCountLabel(0)).toBe('0 members')
+  })
+  it('an avatar is shown only for a real https URL, never generated', () => {
+    expect(validAvatarUrl('https://example.test/a.png')).toBe('https://example.test/a.png')
+    for (const bad of [null, undefined, '', '   ', 'http://example.test/a.png', 'javascript:alert(1)', 'data:image/png;base64,AAAA', 'https://', 'not a url', 'https://a.test/has space.png']) {
+      expect(validAvatarUrl(bad as string | null | undefined)).toBeNull()
+    }
+  })
+})
+
+describe('ownership transfer consequences', () => {
+  const lines = transferConsequences('Bella')
+  it('names the new owner and says the current owner stays as a member', () => {
+    expect(lines[0]).toBe('Bella becomes the Owner of this wallet.')
+    expect(lines[1]).toMatch(/stay in the wallet as a Member/)
+    expect(lines[1]).toMatch(/no longer invite or remove members, manage accounts, categories or budgets, rename the wallet or delete it/)
+  })
+  it('says history and financial data are unchanged, and that pending invitations stay valid', () => {
+    expect(lines[2]).toBe('Past transactions, balances, accounts, budgets and categories are not changed.')
+    expect(lines[3]).toBe('Invitation links that are still pending stay valid. The new Owner can revoke them.')
+  })
+  it('never claims the transfer invalidates invitations or touches money', () => {
+    expect(lines.join(' ')).not.toMatch(/invalidat|cancel|expire|revoked automatically/i)
+  })
+})
+
+describe('attemptLeave (the voluntary-leave guard)', () => {
+  const item = (wallet_id: string, status: string) => ({ wallet_id, status })
+  const svc = () => ({ leave: vi.fn(async () => undefined) })
+
+  it('an empty queue lets the member leave, and calls the leave RPC once with the wallet', async () => {
+    const s = svc()
+    await expect(attemptLeave(s, [], 'w1')).resolves.toEqual({ ok: true })
+    expect(s.leave).toHaveBeenCalledTimes(1)
+    expect(s.leave).toHaveBeenCalledWith('w1')
+  })
+  it('a live queued item for this wallet blocks leaving and the RPC is never called', async () => {
+    const s = svc()
+    await expect(attemptLeave(s, [item('w1', 'PENDING')], 'w1')).resolves.toEqual({ ok: false, message: LEAVE_BLOCKED_MESSAGE })
+    expect(s.leave).not.toHaveBeenCalled()
+  })
+  it('PENDING, SYNCING and FAILED are live', async () => {
+    for (const status of ['PENDING', 'SYNCING', 'FAILED']) {
+      const s = svc()
+      expect((await attemptLeave(s, [item('w1', status)], 'w1')).ok).toBe(false)
+      expect(s.leave).not.toHaveBeenCalled()
+    }
+  })
+  it('BLOCKED and CONFLICT do not block leaving', async () => {
+    for (const status of ['BLOCKED', 'CONFLICT']) {
+      const s = svc()
+      expect((await attemptLeave(s, [item('w1', status)], 'w1')).ok).toBe(true)
+      expect(s.leave).toHaveBeenCalledTimes(1)
+    }
+  })
+  it('items of another wallet do not block leaving', async () => {
+    const s = svc()
+    expect((await attemptLeave(s, [item('w2', 'PENDING'), item('w3', 'FAILED')], 'w1')).ok).toBe(true)
+    expect(s.leave).toHaveBeenCalledWith('w1')
+  })
+  it('one live item among dead and foreign ones is enough to block', async () => {
+    const s = svc()
+    const queue = [item('w1', 'BLOCKED'), item('w2', 'PENDING'), item('w1', 'CONFLICT'), item('w1', 'SYNCING')]
+    expect((await attemptLeave(s, queue, 'w1')).ok).toBe(false)
+    expect(s.leave).not.toHaveBeenCalled()
+  })
+  it('judges the queue it is given at the moment of the call: an item queued after the dialog opened is caught', async () => {
+    const s = svc()
+    const whenDialogOpened: { wallet_id: string; status: string }[] = []
+    expect(whenDialogOpened.filter((i) => i.status !== 'BLOCKED').length).toBe(0) // nothing live yet, so the dialog would allow it
+    const atConfirm = [...whenDialogOpened, item('w1', 'PENDING')] // queued while the dialog was open
+    await expect(attemptLeave(s, atConfirm, 'w1')).resolves.toEqual({ ok: false, message: LEAVE_BLOCKED_MESSAGE })
+    expect(s.leave).not.toHaveBeenCalled()
+  })
+  it('a failing leave call is not swallowed', async () => {
+    const s = { leave: vi.fn(async () => { throw new MembershipError('The owner cannot leave a wallet.') }) }
+    await expect(attemptLeave(s, [], 'w1')).rejects.toThrow('The owner cannot leave a wallet.')
+  })
+  it('says exactly what to do', () => {
+    expect(LEAVE_BLOCKED_MESSAGE).toBe('Sync or discard your pending transaction changes before leaving this wallet.')
+  })
+})
+
+describe('membership errors say why they failed', () => {
+  it('a network failure is "network"; permission failures are "forbidden"; anything else is "other"', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const kind = async (error: object) => {
+      try {
+        await client({ error }).svc.listMembers('w')
+      } catch (e) {
+        return (e as MembershipError).kind
+      }
+    }
+    expect(await kind({ message: 'TypeError: Failed to fetch' })).toBe('network')
+    expect(await kind({ message: 'Load failed' })).toBe('network')
+    expect(await kind({ code: '42501', message: 'not allowed' })).toBe('forbidden')
+    expect(await kind({ code: 'XX000', message: 'internal' })).toBe('other')
+    expect(await kind({ code: '54000', message: 'rate limit exceeded' })).toBe('other')
+  })
+  it('messages are unchanged by classification', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(client({ error: { message: 'TypeError: Failed to fetch' } }).svc.listMembers('w')).rejects.toThrow('Could not load members. Please try again.')
+    await expect(client({ error: { code: '42501' } }).svc.listMembers('w')).rejects.toThrow('Could not load members. Please try again.')
+  })
+})
+
+describe('members load state: a failed refresh never replaces a loaded list', () => {
+  const m = (userId: string, role: 'owner' | 'member' = 'member'): Member => ({ userId, role, joinedAt: '2026-01-01T00:00:00Z', displayName: userId, avatarUrl: null })
+  const loaded = loadSucceeded([m('a', 'owner'), m('b')], [{ id: 'i1', createdAt: '2026-11-01T00:00:00Z', expiresAt: '2026-11-08T00:00:00Z' }])
+  const fail = (kind: MembersFailure['kind'], message = 'Could not load members. Please try again.'): MembersFailure => ({ kind, message })
+
+  // 1. initial load failure, no list: the existing full-page states are unchanged
+  it('an initial failure with no list still takes over the page, in the existing three flavours', () => {
+    expect(membersView(MEMBERS_INITIAL, true)).toBe('loading')
+    expect(membersView(loadFailed(MEMBERS_INITIAL, fail('other')), true)).toBe('error')
+    expect(membersView(loadFailed(MEMBERS_INITIAL, fail('forbidden')), true)).toBe('forbidden')
+    expect(membersView(loadFailed(MEMBERS_INITIAL, fail('network')), true)).toBe('offline')
+    expect(membersView(MEMBERS_INITIAL, false)).toBe('offline') // no request is even attempted while offline
+  })
+  it('an initial failure shows no refresh warning (there is nothing stale to warn about)', () => {
+    for (const kind of ['network', 'forbidden', 'other'] as const) expect(refreshWarning(loadFailed(MEMBERS_INITIAL, fail(kind)))).toBeNull()
+  })
+
+  // 2. refresh failure after a good load: the list stays
+  it('a refresh failure keeps the loaded members and invitations, and the page stays on the list', () => {
+    const s = loadFailed(loaded, fail('other'))
+    expect(s.members).toBe(loaded.members)
+    expect(s.invites).toBe(loaded.invites)
+    for (const kind of ['network', 'forbidden', 'other'] as const) expect(membersView(loadFailed(loaded, fail(kind)), true)).toBe('list')
+    expect(membersView(loadFailed(loaded, fail('other')), false)).toBe('list') // even if the connection has since dropped
+  })
+
+  // 3. the warning
+  it('a refresh failure produces the warning; the generic one is the approved copy', () => {
+    expect(refreshWarning(loadFailed(loaded, fail('other')))).toBe("Couldn't refresh members. The information shown may be outdated.")
+  })
+  it('offline and forbidden refresh failures keep their own distinct wording, each still saying the data may be outdated', () => {
+    const offline = refreshWarning(loadFailed(loaded, fail('network')))!
+    const forbidden = refreshWarning(loadFailed(loaded, fail('forbidden')))!
+    const other = refreshWarning(loadFailed(loaded, fail('other')))!
+    expect(new Set([offline, forbidden, other]).size).toBe(3)
+    expect(offline).toMatch(/offline/)
+    expect(forbidden).toMatch(/no longer have access/)
+    for (const w of [offline, forbidden, other]) expect(w).toMatch(/The information shown may be outdated\.$/)
+  })
+  it('there is no warning while the list is healthy', () => expect(refreshWarning(loaded)).toBeNull())
+
+  // 4. retry
+  it('a successful retry clears the warning and replaces the data', () => {
+    const failed = loadFailed(loaded, fail('network'))
+    expect(refreshWarning(failed)).not.toBeNull()
+    const fresh = loadSucceeded([m('a', 'owner')], [])
+    const after = fresh // what the page does when the retry resolves
+    expect(after.failure).toBeNull()
+    expect(refreshWarning(after)).toBeNull()
+    expect(after.members).toHaveLength(1)
+    expect(membersView(after, true)).toBe('list')
+  })
+  it('a retry that fails again keeps the same list and the warning', () => {
+    const again = loadFailed(loadFailed(loaded, fail('other')), fail('other'))
+    expect(again.members).toBe(loaded.members)
+    expect(refreshWarning(again)).not.toBeNull()
+  })
+
+  // 5. an action followed by a failed refresh
+  it('a failed refresh after a successful action never says or implies the action failed', () => {
+    // The action's own success notice lives outside this state; a failed refresh only sets `failure`.
+    const afterAction = loadFailed(loaded, fail('other'))
+    expect(Object.keys(afterAction).sort()).toEqual(['failure', 'invites', 'members'])
+    for (const kind of ['network', 'forbidden', 'other'] as const) {
+      expect(refreshWarning(loadFailed(loaded, fail(kind)))).not.toMatch(/remov|revok|transfer|could not (remove|revoke|transfer)|failed/i)
+    }
+  })
+
+  // 6. classification and notices untouched
+  it('the failure kind still comes from the service classification (messages are the existing ones)', () => {
+    expect(membersView(loadFailed(MEMBERS_INITIAL, fail('other', 'Could not load members. Please try again.')), true)).toBe('error')
   })
 })
