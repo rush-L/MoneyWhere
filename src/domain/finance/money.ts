@@ -19,7 +19,18 @@ export function parseMinor(s: string): Minor {
   return assertMinor(m[1] ? -minor : minor)
 }
 
-/** 10050 -> "100.50" (no currency symbol or grouping; UI formats that). */
+/**
+ * Display only: 2500000 -> "₱25,000.00", -5 -> "-₱0.05". Integer and string math, no floats.
+ * Never feed this to a form field or export: parseMinor cannot read separators, so those keep formatMinor.
+ */
+export function formatPeso(n: Minor): string {
+  assertMinor(n)
+  const abs = Math.abs(n)
+  const whole = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return `${n < 0 ? '-' : ''}₱${whole}.${String(abs % 100).padStart(2, '0')}`
+}
+
+/** 10050 -> "100.50" (no currency symbol or grouping; the form/export round-trip format for parseMinor). */
 export function formatMinor(n: Minor): string {
   assertMinor(n)
   const abs = Math.abs(n)

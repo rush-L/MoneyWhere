@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { accountBalance, spendingByCategory, transactionTotals, formatMinor, parseMinor, type Transaction } from './index'
+import { accountBalance, spendingByCategory, transactionTotals, formatMinor, formatPeso, parseMinor, type Transaction } from './index'
 
 const A = 'acc-a'
 const B = 'acc-b'
@@ -93,6 +93,15 @@ describe('money parse/format', () => {
     expect(parseMinor('-0.05')).toBe(-5)
     expect(formatMinor(10050)).toBe('100.50')
     expect(formatMinor(-5)).toBe('-0.05')
+  })
+  it('formatPeso groups thousands for display only', () => {
+    const cases: [number, string][] = [[0, '₱0.00'], [5, '₱0.05'], [99, '₱0.99'], [100, '₱1.00'], [99999, '₱999.99'], [100000, '₱1,000.00'], [2500000, '₱25,000.00'], [123456789, '₱1,234,567.89'], [-5, '-₱0.05'], [-123456, '-₱1,234.56'], [Number.MAX_SAFE_INTEGER, '₱90,071,992,547,409.91']]
+    for (const [minor, text] of cases) expect(formatPeso(minor)).toBe(text)
+    expect(() => formatPeso(1.5)).toThrow(RangeError)
+  })
+  it('formatMinor stays ungrouped so it round-trips through parseMinor', () => {
+    for (const n of [0, 5, 100000, 2500000, -123456, 123456789]) expect(parseMinor(formatMinor(n))).toBe(n)
+    expect(formatMinor(2500000)).toBe('25000.00')
   })
   it('rejects bad input', () => {
     expect(() => parseMinor('1.234')).toThrow()

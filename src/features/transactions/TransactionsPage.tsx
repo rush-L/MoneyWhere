@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { formatMinor } from '../../domain/finance'
+import { formatMinor, formatPeso } from '../../domain/finance'
 import { supabase } from '../../lib/supabase'
 import type { Account } from '../accounts/account'
 import { createAccountService } from '../accounts/accountService'
@@ -258,7 +258,7 @@ export function TransactionsPage({ wallet, userId, voice = false, onVoiceHandled
   // The other side's account is left out so the same account cannot be picked twice.
   const accountOptions = (exclude: string) =>
     localAccounts.filter((a) => !transfer || a.id !== exclude).map((a) => (
-      <option key={a.id} value={a.id}>{a.name} (₱{formatMinor(a.currentBalanceMinor)})</option>
+      <option key={a.id} value={a.id}>{a.name} ({formatPeso(a.currentBalanceMinor)})</option>
     ))
   // Online: owner any, member own (the server enforces it). Offline: own transactions only, and the row needs its version
   // (a pending create has none yet). Owner edits of other members' transactions stay online-only.
