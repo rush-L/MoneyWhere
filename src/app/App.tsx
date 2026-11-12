@@ -14,6 +14,12 @@ import { parseInviteHash } from '../features/wallets/membership'
 import { PrivacyPolicyPage } from '../features/legal/PrivacyPolicyPage'
 import { TermsOfServicePage } from '../features/legal/TermsOfServicePage'
 
+const NAV = {
+  dashboard: { label: 'Dashboard', icon: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z' },
+  wallets: { label: 'Wallets', icon: 'M3 7a2 2 0 0 1 2-2h13v4M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-1zM16 14h2' },
+  profile: { label: 'Profile', icon: 'M20 21a8 8 0 0 0-16 0M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' },
+} as const
+
 // UI gating only; Supabase Auth + RLS are the real security boundary.
 function Shell() {
   const { state, service } = useAuth()
@@ -47,27 +53,33 @@ function Shell() {
   const { user } = state.session
   return (
     <OfflineProvider key={user.id} userId={user.id}>
-      <header className="app-header">
-        <strong className="brand">MoneyWhere</strong>
+      <div className="app-shell">
         <nav className="main-nav" aria-label="Main">
+          <strong className="brand nav-brand">MoneyWhere</strong>
           {(['dashboard', 'wallets', 'profile'] as const).map((p) => (
             <button key={p} type="button" aria-current={page === p ? 'page' : undefined} onClick={() => { if (inviteToken) closeInvite(false); setPage(p) }}>
-              {p === 'dashboard' ? 'Home' : p === 'wallets' ? 'Wallets' : 'Profile'}
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={NAV[p].icon} /></svg>
+              {NAV[p].label}
             </button>
           ))}
         </nav>
-        <SyncStatus />
-        <Button variant="ghost" onClick={() => service!.signOut().catch((e: Error) => setSignOutError(e.message))}>
-          Sign out
-        </Button>
-      </header>
-      <main className="page">
-        {signOutError && <p role="alert" className="error">{signOutError}</p>}
-        {inviteToken && <JoinInvitation token={inviteToken} onClose={closeInvite} />}
-        {!inviteToken && page === 'dashboard' && <DashboardPage userId={user.id} />}
-        {!inviteToken && page === 'wallets' && <WalletsPage userId={user.id} />}
-        {!inviteToken && page === 'profile' && <ProfilePage userId={user.id} email={user.email} />}
-      </main>
+        <div className="app-body">
+          <header className="app-header">
+            <strong className="brand">MoneyWhere</strong>
+            <SyncStatus />
+            <Button variant="ghost" onClick={() => service!.signOut().catch((e: Error) => setSignOutError(e.message))}>
+              Sign out
+            </Button>
+          </header>
+          <main className={`page${page === 'dashboard' && !inviteToken ? ' page-wide' : ''}`}>
+            {signOutError && <p role="alert" className="error">{signOutError}</p>}
+            {inviteToken && <JoinInvitation token={inviteToken} onClose={closeInvite} />}
+            {!inviteToken && page === 'dashboard' && <DashboardPage userId={user.id} />}
+            {!inviteToken && page === 'wallets' && <WalletsPage userId={user.id} />}
+            {!inviteToken && page === 'profile' && <ProfilePage userId={user.id} email={user.email} />}
+          </main>
+        </div>
+      </div>
     </OfflineProvider>
   )
 }
