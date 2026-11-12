@@ -27,5 +27,13 @@ export default defineConfig({
       workbox: { navigateFallback: '/index.html' }, // app-shell caching only; no data sync yet
     }),
   ],
-  test: { include: ['src/**/*.test.ts', 'supabase/tests/**/*.test.ts'] },
+  // Two projects so only the PGlite suites get a longer hook timeout: each *.rls.test.ts boots PGlite and replays every
+  // migration in beforeAll, which exceeds the 10s default under CPU load and silently skips the whole file.
+  // Test timeouts (5s) and unit-test hook timeouts are unchanged.
+  test: {
+    projects: [
+      { extends: true, test: { name: 'unit', include: ['src/**/*.test.ts'] } },
+      { extends: true, test: { name: 'rls', include: ['supabase/tests/**/*.test.ts'], hookTimeout: 60_000 } },
+    ],
+  },
 })
