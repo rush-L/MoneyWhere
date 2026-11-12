@@ -3,10 +3,11 @@ import type { Account } from '../accounts/account'
 import type { Budget } from '../budgets/budget'
 import type { Category } from '../categories/category'
 import type { DashboardInputs } from '../dashboard/dashboard'
-import { pendingAccountUse, projectAccounts, projectDashboard } from './localFinance'
+import { pendingAccountUse, pendingCategoryUse, projectAccounts, projectDashboard } from './localFinance'
 import type { OutboxItem } from './outbox/outbox'
 import { localBalances, mergeLocal, reconcile } from './outbox/projection'
 import type { TransactionRow } from '../transactions/transaction'
+import { pendingDeleteBlock, type Category as Cat } from '../categories/category'
 import { expense } from './testing'
 
 const M = '2026-10-01'
@@ -160,5 +161,45 @@ describe('pendingAccountUse (which accounts pending transactions reference)', ()
     const items = [item('t', transfer(100)), item('b', cashExpense(5), 'BLOCKED')]
     const moved = projectAccounts({ accounts: [acct('bpi', 1000), acct('gcash', 1000), acct('cash', 1000)], confirmed: [] }, items, 'w1').filter((a) => a.currentBalanceMinor !== 1000).map((a) => a.id).sort()
     expect(use(items)).toEqual(moved)
+  })
+})
+
+describe('pendingCategoryUse (which categories pending expenses use)', () => {
+  const use = (items: OutboxItem[], confirmed: string[] = [], wallet = 'w1') => [...pendingCategoryUse({ confirmed }, items, wallet)].sort()
+  const spend = (category_id: string) => expense({ account_id: 'cash', category_id })
+  const edit = (id: string, payload: ReturnType<typeof expense>): OutboxItem =>
+    ({ ...item(id, payload), op: 'UPDATE', expected_version: 1, mutation_id: 'm', base: { id, version: 1, type: 'expense', account_id: 'cash', category_id: 'old' } as TransactionRow })
+  const remove = (id: string): OutboxItem =>
+    ({ ...item(id, expense()), op: 'DELETE', payload: null, expected_version: 1, mutation_id: 'm', base: { id, version: 1, type: 'expense', account_id: 'cash', category_id: 'old' } as TransactionRow })
+
+  it('nothing pending, nothing used', () => expect(use([])).toEqual([]))
+  it('a pending expense uses its category, whether top-level or a subcategory', () => {
+    expect(use([item('a', spend('food')), item('b', spend('coffee'))])).toEqual(['coffee', 'food'])
+  })
+  it('PENDING, SYNCING and FAILED count; BLOCKED and CONFLICT never do', () => {
+    for (const s of ['PENDING', 'SYNCING', 'FAILED'] as const) expect(use([item('x', spend('food'), s)])).toEqual(['food'])
+    for (const s of ['BLOCKED', 'CONFLICT'] as const) expect(use([item('x', spend('food'), s)])).toEqual([])
+  })
+  it('income is never a category reference, even if its payload names a category', () => {
+    expect(use([item('i', expense({ type: 'income', account_id: 'cash', category_id: 'food' }))])).toEqual([])
+  })
+  it('a transfer is never a category reference, even if its payload names a category', () => {
+    expect(use([item('t', expense({ type: 'transfer', account_id: 'bpi', destination_account_id: 'gcash', category_id: 'food' }))])).toEqual([])
+  })
+  it('another wallet\'s expenses are ignored', () => expect(use([item('x', spend('food'), 'PENDING', 'w2')])).toEqual([]))
+  it('an expense the server already has is not listed', () => expect(use([item('e', spend('food'))], ['e'])).toEqual([]))
+  it('a pending edit that moves an expense into a category uses the new category, not the old one', () => {
+    expect(use([edit('e', spend('coffee'))])).toEqual(['coffee'])
+  })
+  it('a pending delete uses nothing', () => expect(use([remove('e')])).toEqual([]))
+  it('does not report categories nobody uses', () => expect(use([item('a', spend('food'))])).not.toContain('bills'))
+
+  it('the delete guard reads the queue it is given, so a later check sees a newly queued expense', () => {
+    const cats: Cat[] = [{ id: 'food', walletId: 'w1', parentId: null, name: 'Food' }, { id: 'coffee', walletId: 'w1', parentId: 'food', name: 'Coffee' }]
+    const food = cats[0]!
+    const queueAtRender: OutboxItem[] = []
+    const queueAtClick: OutboxItem[] = [item('late', spend('coffee'))] // queued after the page rendered
+    expect(pendingDeleteBlock(food, cats, pendingCategoryUse({ confirmed: [] }, queueAtRender, 'w1'))).toBeNull()
+    expect(pendingDeleteBlock(food, cats, pendingCategoryUse({ confirmed: [] }, queueAtClick, 'w1'))).toBe('subcategory')
   })
 })

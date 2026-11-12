@@ -38,3 +38,28 @@ export function groupCategories(all: Category[]): CategoryGroup[] {
     .sort(byName)
     .map((category) => ({ category, children: all.filter((c) => c.parentId === category.id).sort(byName) }))
 }
+
+/** Top-level categories and subcategories, counted from the loaded list. Display only. */
+export function categoryCounts(all: readonly Category[]): { categories: number; subcategories: number } {
+  const subcategories = all.filter((c) => c.parentId !== null).length
+  return { categories: all.length - subcategories, subcategories }
+}
+
+/** "4 categories · 13 subcategories". */
+export function countLine(c: { categories: number; subcategories: number }): string {
+  return `${c.categories} ${c.categories === 1 ? 'category' : 'categories'} · ${c.subcategories} ${c.subcategories === 1 ? 'subcategory' : 'subcategories'}`
+}
+
+/**
+ * Whether a pending expense stops this category being deleted: 'self' when it uses the category, 'subcategory' when it
+ * uses one that deleting a parent would also delete, otherwise null. `pendingIds` comes from pendingCategoryUse.
+ */
+export function pendingDeleteBlock(c: Category, all: readonly Category[], pendingIds: ReadonlySet<string>): 'self' | 'subcategory' | null {
+  if (pendingIds.has(c.id)) return 'self'
+  return all.some((x) => x.parentId === c.id && pendingIds.has(x.id)) ? 'subcategory' : null
+}
+
+export const PENDING_DELETE_MESSAGE = {
+  self: "This category is used by a transaction that hasn't synced yet. Sync or discard the pending transaction before deleting this category.",
+  subcategory: "A subcategory of this category is used by a transaction that hasn't synced yet. Sync or discard the pending transaction before deleting this category.",
+} as const

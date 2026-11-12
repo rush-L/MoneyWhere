@@ -64,13 +64,31 @@ export function loadDashboard(
  * already has are not listed: their accounts report `hasTransactions` themselves.
  */
 export function pendingAccountUse(s: { confirmed: readonly string[] }, items: readonly OutboxItem[], walletId: string): Set<string> {
-  const e = pendingEffect(s.confirmed.map((id) => ({ id })), items, walletId)
   const ids = new Set<string>()
-  for (const t of [...e.added, ...e.overlaid.values()]) {
+  for (const t of livePendingRows(s.confirmed, items, walletId)) {
     ids.add(t.account_id)
     if (t.destination_account_id) ids.add(t.destination_account_id)
   }
   return ids
+}
+
+/**
+ * Categories used by this wallet's pending expenses. Income and transfers carry no category and never count, even if a
+ * payload had one. Same live rows as the balances (PENDING, SYNCING, FAILED; never BLOCKED or CONFLICT). This reads only
+ * this device's outbox: a queued expense on another member's device cannot be seen from here.
+ * `confirmed`: ids the server already has (none are known on the Categories page, so a send that actually succeeded
+ * but is still queued counts as pending: that can only block a delete the server would refuse anyway).
+ */
+export function pendingCategoryUse(s: { confirmed: readonly string[] }, items: readonly OutboxItem[], walletId: string): Set<string> {
+  const ids = new Set<string>()
+  for (const t of livePendingRows(s.confirmed, items, walletId)) if (t.type === 'expense' && t.category_id) ids.add(t.category_id)
+  return ids
+}
+
+/** The single reading of the outbox shared by both: new pending rows plus the new state of pending edits. */
+function livePendingRows(confirmed: readonly string[], items: readonly OutboxItem[], walletId: string) {
+  const e = pendingEffect(confirmed.map((id) => ({ id })), items, walletId)
+  return [...e.added, ...e.overlaid.values()]
 }
 
 export const projectAccounts = (s: { accounts: readonly Account[]; confirmed: readonly string[] }, items: readonly OutboxItem[], walletId: string): Account[] =>

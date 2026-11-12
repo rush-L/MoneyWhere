@@ -231,10 +231,22 @@ button:disabled { opacity: 0.6; cursor: default; }
 .profile-who span { color: var(--c-muted); font-size: var(--t-sm); }
 
 /* Categories */
-.category-list, .subcategory-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
-.category { display: grid; gap: var(--s-3); }
-.cat-row { display: grid; gap: var(--s-2); overflow-wrap: anywhere; }
-.subcategory-list { margin-left: var(--s-3); padding-left: var(--s-3); border-left: 2px solid var(--c-border); }
+.count-line { margin: 0; color: var(--c-muted); font-size: var(--t-sm); }
+.category-list { list-style: none; margin: 0; padding: 0 0 64px; display: grid; gap: var(--s-3); } /* bottom space keeps the last card clear of the add button */
+.category { display: grid; gap: var(--s-3); align-content: start; min-width: 0; overflow-wrap: anywhere; }
+.cat-title { display: grid; gap: 2px; }
+.cat-title strong { font-size: var(--t-lg); }
+.cat-meta { color: var(--c-muted); }
+.subcategory-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--c-border); }
+/* A subcategory row: name on the left, quiet actions on the right; notices and forms take a full line */
+.cat-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-1) var(--s-3); padding: var(--s-1) 0; min-width: 0; overflow-wrap: anywhere; }
+.cat-row + .cat-row { border-top: 1px solid var(--c-border); }
+.cat-row > strong { flex: 1 1 10rem; min-width: 0; font-weight: 600; }
+.cat-row > small, .cat-row > form { flex-basis: 100%; }
+.cat-row > .cat-blocked { order: 3; }
+.cat-row .btn-secondary { background: none; border-color: transparent; color: var(--c-brand); padding: 0 var(--s-3); }
+@media (min-width: 640px) { .category-list { grid-template-columns: 1fr 1fr; align-items: start; } }
+@media (min-width: 1024px) { .category-list { padding-bottom: 0; } }
 
 /* Transaction search and filters */
 .filters { display: grid; gap: var(--s-2); }

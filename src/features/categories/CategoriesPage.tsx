@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { supabase } from '../../lib/supabase'
 import { readThrough, type ReadResult } from '../offline/db/cache'
 import { useOffline } from '../offline/hooks/OfflineProvider'
-import { categoriesKey } from '../offline/localFinance'
+import { categoriesKey, pendingCategoryUse } from '../offline/localFinance'
 import { staleNote } from '../offline/syncLabels'
 import type { Wallet } from '../wallets/wallet'
-import { groupCategories, parseCategoryName, type Category } from './category'
+import { categoryCounts, countLine, groupCategories, parseCategoryName, pendingDeleteBlock, PENDING_DELETE_MESSAGE, type Category } from './category'
+import { CategoryCard } from './CategoryCard'
 import { createCategoryService } from './categoryService'
 import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
@@ -15,8 +16,12 @@ import { State } from '../../ui/State'
 
 export function CategoriesPage({ wallet, userId }: { wallet: Wallet; userId: string }) {
   const service = useMemo(() => (supabase ? createCategoryService(supabase) : null), [])
-  const { online, cache } = useOffline()
+  const { online, cache, items } = useOffline()
   const seq = useRef(0) // newest load wins
+  const itemsRef = useRef(items) // the latest queue, read at click time
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
   const initial = useRef(true) // first load may show the saved snapshot while revalidating; reloads after a write may not
   const [stale, setStale] = useState(false) // showing the saved snapshot (not confirmed by the server)
   const [checking, setChecking] = useState(false)
@@ -27,6 +32,7 @@ export function CategoriesPage({ wallet, userId }: { wallet: Wallet; userId: str
   const [renaming, setRenaming] = useState<Category | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [blocked, setBlocked] = useState<{ id: string; text: string } | null>(null) // why a delete was refused, shown on that card
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false) // dialog visibility only; the add form state above stays on this page
@@ -72,11 +78,17 @@ export function CategoriesPage({ wallet, userId }: { wallet: Wallet; userId: str
     }
   }
 
+  function openAdd(parent = '') {
+    setFormError(null)
+    setParentId(parent)
+    setAddOpen(true)
+  }
+
   function add(ev: FormEvent) {
     ev.preventDefault()
     const parsed = parseCategoryName(name)
     if (!parsed.ok) return setFormError(parsed.error)
-    void run(() => service!.create(wallet.id, parsed.name, parentId || null), () => { setName(''); setAddOpen(false) })
+    void run(() => service!.create(wallet.id, parsed.name, parentId || null), () => { setName(''); setParentId(''); setAddOpen(false) })
   }
 
   function saveRename(ev: FormEvent) {
@@ -91,76 +103,120 @@ export function CategoriesPage({ wallet, userId }: { wallet: Wallet; userId: str
     setRenameValue(c.name)
     setFormError(null)
     setConfirmDelete(null)
+    setBlocked(null)
   }
 
-  function row(c: Category, childCount = 0) {
-    if (renaming?.id === c.id) {
+  /**
+   * Whether a queued expense on this device stops the delete. Reads the latest queue (not the one from the last render),
+   * so an expense queued after the page drew cannot slip through. It cannot see other devices' queues.
+   */
+  function pendingBlockFor(c: Category) {
+    const used = pendingCategoryUse({ confirmed: [] }, itemsRef.current, wallet.id)
+    const why = pendingDeleteBlock(c, categories ?? [], used)
+    return why ? PENDING_DELETE_MESSAGE[why] : null
+  }
+
+  function requestDelete(c: Category) {
+    setFormError(null)
+    const text = pendingBlockFor(c)
+    if (text) {
+      setConfirmDelete(null)
+      return setBlocked({ id: c.id, text })
+    }
+    setBlocked(null)
+    setConfirmDelete(c.id)
+  }
+
+  function confirmRemove(c: Category) {
+    const text = pendingBlockFor(c) // checked again at the moment of deletion
+    if (text) {
+      setConfirmDelete(null)
+      return setBlocked({ id: c.id, text })
+    }
+    void run(() => service!.remove(c), () => setConfirmDelete(null))
+  }
+
+  const renameForm = (c: Category) => (
+    <form onSubmit={saveRename} noValidate>
+      <Field label={`Rename ${c.name}`}>
+        <input value={renameValue} maxLength={50} onChange={(e) => setRenameValue(e.target.value)} disabled={busy} />
+      </Field>
+      <div className="actions">
+        <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
+        <Button variant="ghost" onClick={() => setRenaming(null)} disabled={busy}>Cancel</Button>
+      </div>
+    </form>
+  )
+
+  /** Owner actions for one category or subcategory: Rename / Delete, or the delete confirmation, or why delete was refused. */
+  function actionsFor(c: Category, childCount = 0) {
+    if (!isOwner || renaming?.id === c.id) return null
+    if (confirmDelete === c.id) {
       return (
-        <form onSubmit={saveRename} noValidate>
-          <Field label={`Rename ${c.name}`}>
-            <input value={renameValue} maxLength={50} onChange={(e) => setRenameValue(e.target.value)} disabled={busy} />
-          </Field>
+        <>
+          <small>{childCount > 0 ? `Also deletes its ${childCount} ${childCount === 1 ? 'subcategory' : 'subcategories'}. ` : ''}A category with transactions or a budget can't be deleted. Delete?</small>
           <div className="actions">
-            <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
-            <Button variant="ghost" onClick={() => setRenaming(null)} disabled={busy}>Cancel</Button>
+            <Button variant="danger" onClick={() => confirmRemove(c)}>Confirm delete</Button>
+            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
           </div>
-        </form>
+        </>
       )
     }
     return (
       <>
-        <strong>{c.name}</strong>
-        {isOwner && (
-          confirmDelete === c.id ? (
-            <>
-              <small>{childCount > 0 ? `Also deletes its ${childCount} subcategories. ` : ''}Delete?</small>
-              <div className="actions">
-                <Button variant="danger" onClick={() => void run(() => service!.remove(c), () => setConfirmDelete(null))}>Confirm delete</Button>
-                <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-              </div>
-            </>
-          ) : (
-            <div className="actions">
-              <Button variant="secondary" onClick={() => startRename(c)}>Rename</Button>
-              <Button variant="ghost" className="text-danger" onClick={() => { setConfirmDelete(c.id); setFormError(null) }}>Delete</Button>
-            </div>
-          )
-        )}
+        {blocked?.id === c.id && <small role="alert" className="error cat-blocked">{blocked.text}</small>}
+        <div className="actions">
+          <Button variant="secondary" onClick={() => startRename(c)}>Rename</Button>
+          <Button variant="ghost" className="text-danger" onClick={() => requestDelete(c)}>Delete</Button>
+        </div>
       </>
     )
   }
 
   const groups = categories ? groupCategories(categories) : []
+  const counts = categories ? categoryCounts(categories) : null
+  const parentName = groups.find((g) => g.category.id === parentId)?.category.name
 
   return (
     <>
       <PageHeader
         title="Categories"
         level={2}
-        actions={isOwner ? <Button onClick={() => { setFormError(null); setAddOpen(true) }}>+ Add category</Button> : undefined}
+        actions={isOwner ? <Button className="add-desktop" onClick={() => openAdd()}>+ Add category</Button> : undefined}
       />
+      {isOwner && <button type="button" className="fab" aria-label="Add category" onClick={() => openAdd()}>+</button>}
+      {counts && categories && categories.length > 0 && <p className="count-line">{countLine(counts)}</p>}
       {loadError && online && <State kind="error">{loadError}</State>}
       {stale && <p role="status" className="note">{staleNote(checking)}</p>}
       {!online && !categories && <State kind="empty">Categories aren't available offline yet. Connect to the internet to see them.</State>}
       {!categories && !loadError && online && <State kind="loading">Loading categories…</State>}
-      {categories?.length === 0 && <State kind="empty">No categories yet.{isOwner ? ' Use + Add category to add your first one.' : ''}</State>}
+      {categories?.length === 0 && (
+        <State kind="empty" action={isOwner ? <Button onClick={() => openAdd()}>Add your first category</Button> : undefined}>No categories yet.</State>
+      )}
       {groups.length > 0 && (
         <ul className="category-list">
           {groups.map((g) => (
-            <li key={g.category.id} className="card category">
-              <div className="cat-row">{row(g.category, g.children.length)}</div>
-              {g.children.length > 0 && (
-                <ul className="subcategory-list">
-                  {g.children.map((c) => <li key={c.id} className="cat-row">{row(c)}</li>)}
-                </ul>
-              )}
-            </li>
+            <CategoryCard
+              key={g.category.id}
+              title={renaming?.id === g.category.id ? renameForm(g.category) : <strong>{g.category.name}</strong>}
+              meta={g.children.length === 0 ? 'No subcategories' : `${g.children.length} ${g.children.length === 1 ? 'subcategory' : 'subcategories'}`}
+              actions={actionsFor(g.category, g.children.length)}
+              footer={isOwner && <div className="actions"><Button variant="secondary" onClick={() => openAdd(g.category.id)}>+ Add subcategory</Button></div>}
+            >
+              {g.children.length > 0 &&
+                g.children.map((c) => (
+                  <li key={c.id} className="cat-row">
+                    {renaming?.id === c.id ? renameForm(c) : <strong>{c.name}</strong>}
+                    {actionsFor(c)}
+                  </li>
+                ))}
+            </CategoryCard>
           ))}
         </ul>
       )}
       {formError && !addOpen && <p role="alert" className="error">{formError}</p>}
       {isOwner ? (
-        <Dialog open={addOpen} onClose={() => setAddOpen(false)} dismissible={!busy} title="New category">
+        <Dialog open={addOpen} onClose={() => setAddOpen(false)} dismissible={!busy} title={parentName ? `New subcategory in ${parentName}` : 'New category'}>
           <form onSubmit={add} noValidate>
             <Field label="Category name"><input value={name} maxLength={50} onChange={(e) => setName(e.target.value)} disabled={busy} /></Field>
             <Field label="Parent">
