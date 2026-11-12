@@ -12,7 +12,7 @@ import { describeSync, staleNote } from '../offline/syncLabels'
 import { memberLabels, participantLabel } from '../wallets/membership'
 import { createMembershipService } from '../wallets/membershipService'
 import type { Wallet } from '../wallets/wallet'
-import { canManage, parseTransaction, hasFormerPayer, resolvePayer, todayLocal, type TransactionRow } from './transaction'
+import { canManage, formatDay, parseTransaction, hasFormerPayer, resolvePayer, todayLocal, type TransactionRow } from './transaction'
 import { applyFilters, EMPTY_FILTERS, hasFilters, TYPE_LABEL, type TxFilters } from './transactionFilter'
 import { createTransactionService, TransactionConflictError } from './transactionService'
 import { useSpeech } from './useSpeech'
@@ -235,6 +235,11 @@ export function TransactionsPage({ wallet, userId, voice = false, onVoiceHandled
     }
   }
 
+  function openAdd() {
+    setFormError(null)
+    setFormOpen(true)
+  }
+
   function startEdit(t: TransactionRow) {
     setEditing(t)
     setFormError(null)
@@ -269,6 +274,14 @@ export function TransactionsPage({ wallet, userId, voice = false, onVoiceHandled
   const typeLabel = (t: TransactionRow) => (t.type === 'transfer' ? 'Transfer' : t.type === 'income' ? 'Income' : 'Expense')
   const typeSign = (t: TransactionRow) => (t.type === 'transfer' ? '↔' : t.type === 'income' ? '+' : '−')
   const typeTone = (t: TransactionRow) => (t.type === 'transfer' ? 'info' : t.type === 'income' ? 'good' : 'neutral')
+  const typeIcon = (t: TransactionRow) => (t.type === 'transfer' ? '⇄' : t.type === 'income' ? '↓' : '↑')
+  // Row text only rearranges what the row already showed: the note leads when there is one, else the category (or the transfer route).
+  const route = (t: TransactionRow) => `${accountName(t.account_id)} → ${accountName(t.destination_account_id ?? '')}`
+  const rowTitle = (t: TransactionRow) => t.note?.trim() || (t.type === 'transfer' ? route(t) : t.type === 'income' ? 'Income' : categoryName(t.category_id))
+  const rowMeta = (t: TransactionRow) =>
+    t.type === 'transfer'
+      ? t.note?.trim() ? route(t) : null
+      : [accountName(t.account_id), t.type === 'expense' && t.note?.trim() ? categoryName(t.category_id) : null, `${t.type === 'income' ? 'Received by' : 'Paid by'}: ${paidBy(t)}`].filter(Boolean).join(' · ')
   // Presentation only: consecutive rows with the same date share a heading; order and content of `shown` are untouched.
   const days: { date: string; rows: LocalTransaction[] }[] = []
   for (const t of filtered ?? []) {
@@ -282,28 +295,31 @@ export function TransactionsPage({ wallet, userId, voice = false, onVoiceHandled
       <PageHeader
         title="Transactions"
         level={2}
-        actions={accounts.length > 0 ? <Button onClick={() => { setFormError(null); setFormOpen(true) }}>+ Add</Button> : undefined}
+        actions={accounts.length > 0 ? <Button className="add-desktop" onClick={openAdd}>+ Add</Button> : undefined}
       />
+      {accounts.length > 0 && <button type="button" className="fab" aria-label="Add transaction" onClick={openAdd}>+</button>}
       {loadError && <State kind="error">{loadError}</State>}
       {stale && <p role="status" className="note">{staleNote(checking)}</p>}
       {notice && <p role="status" className="note info">{notice}</p>}
       {!shown && !loadError && <State kind="loading">Loading transactions…</State>}
-      {shown?.length === 0 && <State kind="empty">No transactions yet.</State>}
+      {shown?.length === 0 && <State kind="empty" action={accounts.length > 0 ? <Button onClick={openAdd}>Add your first transaction</Button> : undefined}>No transactions yet.</State>}
       {shown && shown.length > 0 && (
         <div className="filters">
           <Field label="Search">
             <input type="search" value={filters.search} placeholder="Note, account, category, who paid, type" onChange={(e) => patch({ search: e.target.value })} />
           </Field>
           <details className="filter-panel">
-            <summary>Filters{filtersOn ? ' (on)' : ''}</summary>
-            <div className="filter-dates">
-              <Field label="From"><input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => patch({ from: e.target.value })} /></Field>
-              <Field label="To"><input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => patch({ to: e.target.value })} /></Field>
+            <summary>Filters{filtersOn && <Badge tone="info">On</Badge>}</summary>
+            <div className="filter-body">
+              <div className="filter-dates">
+                <Field label="From"><input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => patch({ from: e.target.value })} /></Field>
+                <Field label="To"><input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => patch({ to: e.target.value })} /></Field>
+              </div>
+              <CheckGroup legend="Type" options={typeOptions} selected={filters.types} onChange={(types) => patch({ types })} />
+              <CheckGroup legend="Account" options={accountOptionsF} selected={filters.accountIds} onChange={(accountIds) => patch({ accountIds })} />
+              <CheckGroup legend="Category" options={categoryOptionsF} selected={filters.categoryIds} onChange={(categoryIds) => patch({ categoryIds })} />
+              <CheckGroup legend="Who paid / Received by" options={payerOptions} selected={filters.payerIds} onChange={(payerIds) => patch({ payerIds })} />
             </div>
-            <CheckGroup legend="Type" options={typeOptions} selected={filters.types} onChange={(types) => patch({ types })} />
-            <CheckGroup legend="Account" options={accountOptionsF} selected={filters.accountIds} onChange={(accountIds) => patch({ accountIds })} />
-            <CheckGroup legend="Category" options={categoryOptionsF} selected={filters.categoryIds} onChange={(categoryIds) => patch({ categoryIds })} />
-            <CheckGroup legend="Who paid / Received by" options={payerOptions} selected={filters.payerIds} onChange={(payerIds) => patch({ payerIds })} />
           </details>
           {filtersOn && <div className="actions"><Button variant="ghost" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</Button></div>}
         </div>
@@ -311,20 +327,19 @@ export function TransactionsPage({ wallet, userId, voice = false, onVoiceHandled
       {shown && shown.length > 0 && filtered?.length === 0 && <State kind="empty">No matching transactions</State>}
       {days.map((day, i) => (
         <section key={`${day.date}-${i}`} className="tx-day">
-          <h3 className="tx-date">{day.date}</h3>
+          <h3 className="tx-date"><time dateTime={day.date}>{formatDay(day.date)}</time></h3>
           <ul className="tx-list">
             {day.rows.map((t) => (
-              <li key={t.id} className={`card tx${t.sync ? ' pending' : ''}`}>
+              <li key={t.id} className={`card tx tx-${t.type}${t.sync ? ' pending' : ''}`}>
                 <div className="tx-top">
-                  <Badge tone={typeTone(t)}>{typeLabel(t)}</Badge>
+                  <span className="tx-icon" aria-hidden="true">{typeIcon(t)}</span>
+                  <div className="tx-body">
+                    <strong className="tx-title">{rowTitle(t)}</strong>
+                    {rowMeta(t) && <small className="tx-meta">{rowMeta(t)}</small>}
+                    <span><Badge tone={typeTone(t)}>{typeLabel(t)}</Badge></span>
+                  </div>
                   <strong className="tx-amount"><Money minor={t.amount_minor} prefix={typeSign(t)} /></strong>
                 </div>
-                {t.type === 'transfer' ? (
-                  <small>↔ {accountName(t.account_id)} → {accountName(t.destination_account_id ?? '')}</small>
-                ) : (
-                  <small>{accountName(t.account_id)} · {categoryName(t.category_id)} · {t.type === 'income' ? 'Received by' : 'Paid by'}: {paidBy(t)}</small>
-                )}
-                {t.note && <small>{t.note}</small>}
                 {t.sync && (() => {
                   const d = describeSync(t.sync, (items.find((i) => i.id === t.id)?.attempt_count ?? 0) > 0)
                   return (
@@ -375,15 +390,17 @@ export function TransactionsPage({ wallet, userId, voice = false, onVoiceHandled
             {speech.listening && <p role="status" className="note">Listening… e.g. “coffee 120 cash”</p>}
             {heard && !speech.listening && <p role="status" className="note">Heard: “{heard}” · check the fields below.</p>}
             {speech.error && <p role="alert" className="error">{speech.error}</p>}
-            <Field label="Type">
-              <select value={form.type} onChange={set('type')} disabled={busy}>
-                <option value="expense">Expense</option>
-                <option value="income">Income</option>
-                <option value="transfer">Transfer</option>
-              </select>
-            </Field>
+            <fieldset className="segmented" disabled={busy}>
+              <legend>Type</legend>
+              {(['expense', 'income', 'transfer'] as const).map((v) => (
+                <label key={v} className={`seg-${v}`}>
+                  <input type="radio" name="tx-type" value={v} checked={form.type === v} onChange={set('type')} />
+                  <span>{TYPE_LABEL[v]}</span>
+                </label>
+              ))}
+            </fieldset>
             <Field label="Amount (₱)">
-              <input inputMode="decimal" value={form.amount} placeholder="0.00" onChange={set('amount')} disabled={busy} />
+              <input className="amount-input" inputMode="decimal" value={form.amount} placeholder="0.00" onChange={set('amount')} disabled={busy} />
             </Field>
             <Field label={transfer ? 'From Account' : 'Account'}>
               <select value={form.accountId} onChange={set('accountId')} disabled={busy}>

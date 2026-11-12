@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canManage, hasFormerPayer, parseTransaction, resolvePayer, todayLocal } from './transaction'
+import { canManage, formatDay, hasFormerPayer, parseTransaction, resolvePayer, todayLocal } from './transaction'
 
 const ok = { type: 'expense', accountId: 'a', destinationAccountId: '', categoryId: 'c', amount: '500', date: '2026-10-10', note: '' }
 const err = (o: Partial<typeof ok>) => {
@@ -40,6 +40,27 @@ describe('parseTransaction', () => {
     expect(err({ type: 'refund' })).toMatch(/income, expense or transfer/)
     expect(err({ note: 'x'.repeat(501) })).toMatch(/Note/)
   })
+})
+
+describe('formatDay', () => {
+  it('formats a calendar day without time-zone drift', () => {
+    expect(formatDay('2026-11-05')).toBe('Thu, 5 Nov 2026')
+    expect(formatDay('2026-01-01')).toBe('Thu, 1 Jan 2026')
+    expect(formatDay('2024-02-29')).toBe('Thu, 29 Feb 2024')
+  })
+  it('names every weekday', () => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    days.forEach((w, i) => expect(formatDay(`2026-11-0${i + 2}`)).toBe(`${w}, ${i + 2} Nov 2026`))
+  })
+  it('names every month', () => {
+    const cases: [string, string][] = [['2026-01-15', 'Thu, 15 Jan 2026'], ['2026-02-15', 'Sun, 15 Feb 2026'], ['2026-03-15', 'Sun, 15 Mar 2026'], ['2026-04-15', 'Wed, 15 Apr 2026'], ['2026-05-15', 'Fri, 15 May 2026'], ['2026-06-15', 'Mon, 15 Jun 2026'], ['2026-07-15', 'Wed, 15 Jul 2026'], ['2026-08-15', 'Sat, 15 Aug 2026'], ['2026-09-15', 'Tue, 15 Sep 2026'], ['2026-10-15', 'Thu, 15 Oct 2026'], ['2026-11-15', 'Sun, 15 Nov 2026'], ['2026-12-15', 'Tue, 15 Dec 2026']]
+    for (const [iso, text] of cases) expect(formatDay(iso)).toBe(text)
+  })
+  it('is not shifted by the time zone at day boundaries', () => {
+    expect(formatDay('2026-12-31')).toBe('Thu, 31 Dec 2026')
+    expect(formatDay('2027-01-01')).toBe('Fri, 1 Jan 2027')
+  })
+  it('returns unparseable input unchanged', () => expect(formatDay('not-a-date')).toBe('not-a-date'))
 })
 
 describe('helpers', () => {

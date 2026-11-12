@@ -167,8 +167,23 @@ button:disabled { opacity: 0.6; cursor: default; }
 .tx-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
 .tx { display: grid; gap: var(--s-2); padding: var(--s-3) var(--s-4); overflow-wrap: anywhere; }
 .tx.pending { border-style: dashed; }
-.tx-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
-.tx-amount { font-size: var(--t-lg); text-align: right; }
+.tx-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: var(--s-3); }
+.tx-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font-weight: 700; background: var(--c-surface-2); }
+.tx-body { display: grid; gap: 2px; justify-items: start; min-width: 0; }
+.tx-title { font-weight: 600; }
+.tx-meta { color: var(--c-muted); }
+.tx-amount { font-size: var(--t-lg); font-weight: 700; text-align: right; white-space: nowrap; }
+/* Spec 5: income green, expense red, transfer teal. Text-safe tones; the Badge keeps the type in words. */
+.tx-income .tx-icon { background: var(--c-good-soft); color: var(--c-good); }
+.tx-income .tx-amount { color: var(--c-good); }
+.tx-expense .tx-icon { background: var(--c-over-soft); color: var(--c-over); }
+.tx-expense .tx-amount { color: var(--c-over); }
+.tx-transfer .tx-icon { background: var(--c-brand-soft); color: var(--c-brand); }
+.tx-transfer .tx-amount { color: var(--c-brand); }
+.add-desktop { display: none; }
+.fab { position: fixed; right: var(--s-4); bottom: calc(var(--nav-h) + var(--s-4) + env(safe-area-inset-bottom)); z-index: 9; width: 56px; height: 56px; padding: 0; border-radius: 50%; font-size: 28px; line-height: 1; box-shadow: 0 4px 12px #1e293b40; }
+.tx-day:last-of-type { padding-bottom: 64px; } /* keep the last row clear of the add button */
+@media (min-width: 1024px) { .add-desktop { display: inline-flex; } .fab { display: none; } .tx-day:last-of-type { padding-bottom: 0; } }
 
 /* Budgets */
 .month-nav { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
@@ -215,3 +230,26 @@ button:disabled { opacity: 0.6; cursor: default; }
 .filter-group legend { font-weight: 600; padding: 0; margin-bottom: var(--s-1); }
 .check { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); }
 .check input { min-height: 0; width: 1.25rem; height: 1.25rem; flex: none; }
+.filter-panel { background: var(--c-surface); }
+.filter-panel summary { gap: var(--s-2); }
+.filter-panel summary::after { content: ""; width: 8px; height: 8px; margin: 0 var(--s-1) 3px auto; border: solid var(--c-muted); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.filter-panel[open] summary::after { margin-bottom: -3px; transform: rotate(225deg); }
+.filter-body { display: grid; gap: var(--s-4); margin-top: var(--s-2); } /* a <details>'s children are not its grid items, so the layout lives on this wrapper */
+@media (min-width: 640px) {
+  .filter-body { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); column-gap: var(--s-5); align-items: start; }
+  .filter-body > .filter-dates { grid-column: 1 / -1; }
+}
+
+/* Transaction form: type as a segmented control (native radios, so keyboard and screen readers keep working) */
+.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.segmented legend { padding: 0; margin-bottom: var(--s-1); font-size: var(--t-sm); }
+.segmented label { position: relative; display: block; }
+.segmented input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.segmented span { display: flex; align-items: center; justify-content: center; min-height: var(--tap); border: 1px solid var(--c-border-strong); border-radius: var(--r-1); background: var(--c-surface); font-weight: 600; }
+.segmented input:checked + span { border-color: currentColor; }
+.segmented .seg-expense input:checked + span { background: var(--c-over-soft); color: var(--c-over); }
+.segmented .seg-income input:checked + span { background: var(--c-good-soft); color: var(--c-good); }
+.segmented .seg-transfer input:checked + span { background: var(--c-brand-soft); color: var(--c-brand); }
+.segmented input:focus-visible + span { outline: 3px solid var(--c-focus); outline-offset: 2px; }
+.segmented:disabled { opacity: 0.6; }
+.amount-input { font-size: var(--t-xl); font-weight: 700; }

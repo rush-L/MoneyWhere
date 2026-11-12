@@ -68,6 +68,21 @@ export function parseTransaction(i: TransactionInput): { ok: true; value: NewTra
 export const todayLocal = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
+const DAY_FORMAT = new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+
+/**
+ * "2026-11-05" -> "Thu, 5 Nov 2026" for day headings. en-PH supplies the weekday and month names, but its own field
+ * order is month-first (identical to en-US), so the day-first order is assembled from the parts. UTC on both sides, so
+ * the viewer's time zone never shifts the day. Display only: dates are stored and compared as "YYYY-MM-DD" strings.
+ * Unparseable input is returned as is.
+ */
+export function formatDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return date
+  const p = Object.fromEntries(DAY_FORMAT.formatToParts(d).map((x) => [x.type, x.value]))
+  return `${p.weekday}, ${p.day} ${p.month} ${p.year}`
+}
+
 /** An income/expense whose payer deleted their account (payer null): it stays "Former member" until a member is explicitly chosen. */
 export const hasFormerPayer = (t: Pick<TransactionRow, 'type' | 'paid_by_user_id'> | null | undefined) => !!t && t.type !== 'transfer' && t.paid_by_user_id === null
 
