@@ -2,6 +2,14 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## UI redesign, second pass — teal tokens, shell and mobile-first (2026-11-12 to 2026-11-13)
+
+Presentation only; no migration, RPC, RLS, offline or dependency change. Commits `1f2eb93`..`c6e6f86`.
+
+- **Done:** thousands grouping in displayed pesos; teal design tokens and a sidebar / bottom-nav shell; redesigned Dashboard (summary cards, shared budget status via `BudgetProgress`), Transactions (list and forms), Budgets, Accounts, Categories and Members (each with a small pure helper plus tests, e.g. `budgetStatus`, `formatDate`, `account.ts`, `category.ts`, `membership.ts`); a mobile-first responsiveness pass (`viewport-fit=cover`, base-CSS-is-phone rule, now also in `CLAUDE.md`).
+- **Verified (2026-11-24, local):** `tsc -b`, `eslint`, `npm test` (703 pass, 45 files) and `npm run build` (PWA precache generated; only the existing >500 kB chunk warning). In the browser (Vite dev server, same-origin iframes at 320 / 360 / 390 / 430 / 768 / 1024 / 1280 / 1440): sign-in, create-account, forgot-password, `/privacy` and `/terms` have no horizontal overflow, and every button, input and select is at least 44px tall. The only controls under 44px are inline text links inside the legal prose (21px: the contact mailto and the Privacy/Terms cross-links); left as normal inline links.
+- **Not verified:** every signed-in screen (Wallets, Dashboard, Transactions, Accounts, Categories, Budgets, Members, Profile, dialogs) at those widths, including the 360px Accounts overflow noted under Phase 9.1. Reason: needs a signed-in session on the hosted DEV project, and no credentials were available in this session. Also not run: physical devices, Safari, Firefox, safe-area insets on a notched phone.
+
 ## Voice add (2026-11-05)
 
 Client-only: no migration, RPC, RLS or dependency change. Not in `01-APP-SPEC.md` or the roadmap; built on the owner's request. Status: **IMPLEMENTED — device verification pending**.
