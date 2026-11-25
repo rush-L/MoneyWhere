@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Spec alignment fixes — Dashboard labels, wallet rename (2026-11-25)
+
+Result of comparing `01-APP-SPEC.md` with the code. Client-only: no migration, RLS or dependency change (the `wallets` update policy, the `update (name)` column grant and their allowed/denied RLS tests already existed).
+
+- **Dashboard (section 13):** the redesign had renamed the figures to "Income" and "Expenses" and folded Budgeted Spent into a note. They are **Monthly Income** and **Total Spent** again, with "Budgeted Spent: ₱X" as the card note. No figure or calculation changed.
+- **Wallet rename (sections 5 and 6.1):** an owner-only **Rename** button in the wallet header opens a dialog (same 1-50 character validation as creation). `walletService.rename` updates only `name`; no row updated (a non-owner) is reported as an error, never as success. Shown only to owners and only online (wallet changes need a connection, section 14). The wallet list is reloaded after a save.
+- **Tests:** `walletService.test.ts` (3). `npm test` 706 pass; typecheck, lint and build clean.
+- **Still open from the comparison (not changed):** wallet **delete** has no UI or service method (the database allows it for owners; needs a confirmation naming what is lost and a pending-offline-changes check, so it is a destructive-operation decision); the Dashboard shows Total Balance but no per-account balances, and only the current month (section 13 says "selected wallet and month"); both need a decision on spec versus app.
+- **Not verified:** the Rename dialog and the relabelled cards in a browser, at any width. Reason: needs a signed-in session on the hosted DEV project, which was deliberately not used further in this session.
+
 ## UI redesign, second pass — teal tokens, shell and mobile-first (2026-11-12 to 2026-11-13)
 
 Presentation only; no migration, RPC, RLS, offline or dependency change. Commits `1f2eb93`..`c6e6f86`.
