@@ -11,6 +11,7 @@ import { MembersPanel } from './MembersPanel'
 import { createWalletService } from './walletService'
 import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
+import { Dialog } from '../../ui/Dialog'
 import { Field } from '../../ui/Field'
 import { PageHeader } from '../../ui/PageHeader'
 import { Section } from '../../ui/Section'
@@ -29,12 +30,16 @@ const SECTIONS = [
 
 export function WalletsPage({ userId }: { userId: string }) {
   const service = useMemo(() => (supabase ? createWalletService(supabase) : null), [])
-  const { cache } = useOffline()
+  const { cache, online } = useOffline()
   const [wallets, setWallets] = useState<Wallet[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameName, setRenameName] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
   const [selected, setSelected] = useState<{ wallet: Wallet; page: 'accounts' | 'categories' | 'transactions' | 'budgets' | 'members' } | null>(null)
 
   const load = useCallback(
@@ -78,6 +83,30 @@ export function WalletsPage({ userId }: { userId: string }) {
     }
   }
 
+  function openRename(w: Wallet) {
+    setRenameName(w.name)
+    setRenameError(null)
+    setRenameOpen(true)
+  }
+
+  async function rename(ev: FormEvent, w: Wallet) {
+    ev.preventDefault()
+    const parsed = parseWalletName(renameName)
+    if (!parsed.ok) return setRenameError(parsed.error)
+    setRenaming(true)
+    setRenameError(null)
+    try {
+      await service!.rename(w.id, parsed.name)
+      setSelected((s) => (s ? { ...s, wallet: { ...s.wallet, name: parsed.name } } : s))
+      setRenameOpen(false)
+      void load()
+    } catch (e) {
+      setRenameError(e instanceof Error ? e.message : 'Could not rename the wallet.')
+    } finally {
+      setRenaming(false)
+    }
+  }
+
   if (selected) {
     const back = () => { setSelected(null); voiceDone() }
     // Presentation only: exactly one section is mounted at a time, so switching tabs remounts and reloads it like before.
@@ -90,7 +119,15 @@ export function WalletsPage({ userId }: { userId: string }) {
       : <CategoriesPage wallet={wallet} userId={userId} />
     return (
       <div className="wallet-shell">
-        <PageHeader title={wallet.name} onBack={back} backLabel="Wallets" />
+        <PageHeader title={wallet.name} onBack={back} backLabel="Wallets" actions={wallet.role === 'owner' && online ? <Button variant="secondary" onClick={() => openRename(wallet)}>Rename</Button> : undefined} />
+        <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} dismissible={!renaming} title="Rename wallet">
+          <form onSubmit={(ev) => void rename(ev, wallet)} noValidate>
+            <Field label="Wallet name" error={renameError}>
+              <input value={renameName} maxLength={50} onChange={(e) => setRenameName(e.target.value)} disabled={renaming} />
+            </Field>
+            <Button type="submit" disabled={renaming}>{renaming ? 'Saving…' : 'Save'}</Button>
+          </form>
+        </Dialog>
         <nav className="tabs" aria-label={`${wallet.name} sections`}>
           {SECTIONS.map(([page, label]) => (
             <button key={page} type="button" aria-current={selected.page === page ? 'page' : undefined} onClick={() => selected.page !== page && setSelected({ wallet, page })}>

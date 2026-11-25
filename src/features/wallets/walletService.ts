@@ -27,6 +27,12 @@ export function createWalletService(client: SupabaseClient) {
       const { error } = await client.rpc('create_wallet', { p_name: name })
       if (error) fail('Could not create the wallet. Please try again.', error)
     },
+    /** Owner only, enforced by RLS (column grant `update (name)`); a non-owner matches no row, reported as a permission problem. */
+    async rename(walletId: string, name: string): Promise<void> {
+      const { data, error } = await client.from('wallets').update({ name }).eq('id', walletId).select('id')
+      if (error) fail('Could not rename the wallet. Please try again.', error)
+      if (data.length === 0) fail('Could not rename the wallet. Only the wallet owner can rename it.', 'no rows updated')
+    },
   }
 }
 
