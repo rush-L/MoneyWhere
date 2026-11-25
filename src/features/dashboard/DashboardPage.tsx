@@ -125,8 +125,8 @@ function DashboardView({ wallet, userId, onBudgets }: { wallet: Wallet; userId: 
         <SummaryCard label="Budget Remaining" tone={over ? 'over' : undefined} note={<>of <Money minor={data.totalBudgeted} /> budgeted{over && <> · <Badge tone="over">Over budget</Badge></>}</>}>
           <Money minor={data.totalRemaining} />
         </SummaryCard>
-        <SummaryCard label="Income" note="This month, transfers excluded"><Money minor={data.monthlyIncome} /></SummaryCard>
-        <SummaryCard label="Expenses" note={<><Money minor={data.budgetedSpent} /> in budgeted categories</>}><Money minor={data.totalSpent} /></SummaryCard>
+        <SummaryCard label="Monthly Income" note="This month, transfers excluded"><Money minor={data.monthlyIncome} /></SummaryCard>
+        <SummaryCard label="Total Spent" note={<>Budgeted Spent: <Money minor={data.budgetedSpent} /></>}><Money minor={data.totalSpent} /></SummaryCard>
         <SummaryCard label="Total Balance" note={data.accountCount === 0 ? 'No accounts yet. Add an account to start tracking your money.' : `${data.accountCount} account${data.accountCount === 1 ? '' : 's'}`}>
           {data.accountCount === 0 ? '—' : <Money minor={data.totalBalance} />}
         </SummaryCard>
