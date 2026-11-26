@@ -2,6 +2,16 @@
 
 Newest first. Records implemented changes and architectural decisions.
 
+## Wallet delete (2026-11-26)
+
+Spec sections 5 and 6.1 (owner deletes a wallet and everything in it for all members). Client-only: no migration; `wallets_delete_owner`, the `on delete cascade` foreign keys and their allowed/denied RLS tests (including cascades with data) already existed.
+
+- **UI:** owner-only **Delete wallet** card at the bottom of the wallet's Members tab (`DeleteWalletSection`). The dialog says what is lost (accounts, categories, budgets, transactions; other members lose access immediately and unsynced items of theirs may not be saved), offers **Export my data first** (reuses the account-deletion export), and needs the word `DELETE` typed.
+- **Blocks:** offline (needs a connection); and **any** outbox item of this wallet in any status (pending, syncing, failed, blocked, conflict), re-read at the moment of confirmation. Pending changes are never discarded or synced by this flow. Items of other wallets do not block. This only sees this device's queue; another member's unsynced items cannot be seen (stated in the dialog).
+- **Service:** `walletService.remove` deletes by id; zero rows (not the owner, or already gone) is an error, never success. After success the wallet's cached snapshot is removed (`cache.remove`) and the list is reloaded.
+- **Tests:** `walletService.test.ts` (+3), `wallet.test.ts` (+2). `npm test` 711 pass; typecheck, lint and build clean.
+- **Not verified:** the dialog and the delete itself in a browser or against the hosted DEV project, at any width. Reason: needs a signed-in session on the hosted DEV project, which was deliberately not used further. It would also delete a wallet there, so it needs a throwaway wallet.
+
 ## Spec alignment fixes — Dashboard labels, wallet rename (2026-11-25)
 
 Result of comparing `01-APP-SPEC.md` with the code. Client-only: no migration, RLS or dependency change (the `wallets` update policy, the `update (name)` column grant and their allowed/denied RLS tests already existed).
@@ -9,7 +19,7 @@ Result of comparing `01-APP-SPEC.md` with the code. Client-only: no migration, R
 - **Dashboard (section 13):** the redesign had renamed the figures to "Income" and "Expenses" and folded Budgeted Spent into a note. They are **Monthly Income** and **Total Spent** again, with "Budgeted Spent: ₱X" as the card note. No figure or calculation changed.
 - **Wallet rename (sections 5 and 6.1):** an owner-only **Rename** button in the wallet header opens a dialog (same 1-50 character validation as creation). `walletService.rename` updates only `name`; no row updated (a non-owner) is reported as an error, never as success. Shown only to owners and only online (wallet changes need a connection, section 14). The wallet list is reloaded after a save.
 - **Tests:** `walletService.test.ts` (3). `npm test` 706 pass; typecheck, lint and build clean.
-- **Still open from the comparison (not changed):** wallet **delete** has no UI or service method (the database allows it for owners; needs a confirmation naming what is lost and a pending-offline-changes check, so it is a destructive-operation decision); the Dashboard shows Total Balance but no per-account balances, and only the current month (section 13 says "selected wallet and month"); both need a decision on spec versus app.
+- **Still open from the comparison (not changed):** wallet **delete** (done the next day, see "Wallet delete" above); the Dashboard shows Total Balance but no per-account balances, and only the current month (section 13 says "selected wallet and month"); both need a decision on spec versus app.
 - **Not verified:** the Rename dialog and the relabelled cards in a browser, at any width. Reason: needs a signed-in session on the hosted DEV project, which was deliberately not used further in this session.
 
 ## UI redesign, second pass — teal tokens, shell and mobile-first (2026-11-12 to 2026-11-13)

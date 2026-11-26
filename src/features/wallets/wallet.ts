@@ -34,6 +34,15 @@ export function walletFromRow(r: WalletRow): Wallet {
 
 export { DEFAULT_CURRENCY }
 
+export const DELETE_CONFIRM_WORD = 'DELETE'
+export const DELETE_PENDING_MESSAGE = 'This wallet has changes that have not synced yet. Sync or discard them first.'
+
+/**
+ * Deleting a wallet would silently drop its queued transactions, so ANY outbox item for it blocks, in any status
+ * (BLOCKED and CONFLICT too: they are still unresolved financial changes). Items of other wallets do not.
+ */
+export const hasPendingForWallet = (items: readonly { wallet_id: string; status?: string }[], walletId: string): boolean => items.some((i) => i.wallet_id === walletId)
+
 /** Mirrors the DB CHECK (1-50 chars after trim). */
 export function parseWalletName(input: string): { ok: true; name: string } | { ok: false; error: string } {
   const name = input.trim()

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { parseWalletName, walletFromRow } from './wallet'
+import { hasPendingForWallet, parseWalletName, walletFromRow } from './wallet'
+
+describe('hasPendingForWallet', () => {
+  it('any queued item of this wallet blocks, in any status', () => {
+    for (const status of ['PENDING', 'SYNCING', 'FAILED', 'BLOCKED', 'CONFLICT']) expect(hasPendingForWallet([{ wallet_id: 'w1', status }], 'w1')).toBe(true)
+  })
+  it('items of other wallets and an empty queue do not', () => {
+    expect(hasPendingForWallet([{ wallet_id: 'w2' }], 'w1')).toBe(false)
+    expect(hasPendingForWallet([], 'w1')).toBe(false)
+  })
+})
 
 describe('walletFromRow', () => {
   const row = { id: 'w', name: 'Home', currency: 'PHP', mode: 'shared_log', created_at: 'c' }

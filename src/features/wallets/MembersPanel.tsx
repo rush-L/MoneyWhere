@@ -14,6 +14,7 @@ import {
   type CreatedInvitation,
 } from './membership'
 import { createMembershipService, MembershipError } from './membershipService'
+import { DeleteWalletSection } from './DeleteWalletSection'
 import type { Wallet } from './wallet'
 
 const OFFLINE = "Members aren't available offline. Connect to the internet to view or manage wallet membership."
@@ -23,7 +24,7 @@ const FORBIDDEN = "You don't have access to this wallet's members."
  * Members and invitations for one wallet. Online only: membership changes are never queued offline, and nothing here is cached.
  * Authorization is the database's; the owner-only controls here just mirror it.
  */
-export function MembersPanel({ wallet, userId, onLeft, onTransferred }: { wallet: Wallet; userId: string; onLeft: () => void; onTransferred: () => void }) {
+export function MembersPanel({ wallet, userId, onLeft, onTransferred, onDeleted }: { wallet: Wallet; userId: string; onLeft: () => void; onTransferred: () => void; onDeleted: () => void }) {
   const service = useMemo(() => (supabase ? createMembershipService(supabase) : null), [])
   const { online, items } = useOffline()
   const itemsRef = useRef(items) // the latest queue, read when Leave is confirmed
@@ -214,6 +215,8 @@ export function MembersPanel({ wallet, userId, onLeft, onTransferred }: { wallet
           </Section>
         </div>
       )}
+
+      {isOwner && <DeleteWalletSection wallet={wallet} userId={userId} otherMembers={others.length} onDeleted={onDeleted} />}
 
       {!isOwner && (
         <div className="card">

@@ -33,6 +33,15 @@ export function createWalletService(client: SupabaseClient) {
       if (error) fail('Could not rename the wallet. Please try again.', error)
       if (data.length === 0) fail('Could not rename the wallet. Only the wallet owner can rename it.', 'no rows updated')
     },
+    /**
+     * Owner only, enforced by RLS. Cascades to accounts, categories, budgets, transactions and memberships, for every member.
+     * Zero rows means the caller is not the owner or the wallet is already gone: never reported as success.
+     */
+    async remove(walletId: string): Promise<void> {
+      const { data, error } = await client.from('wallets').delete().eq('id', walletId).select('id')
+      if (error) fail('Could not delete the wallet. Nothing was deleted. Please try again.', error)
+      if (data.length === 0) fail('Could not delete the wallet. Only the wallet owner can delete it, and it may already be deleted.', 'no rows deleted')
+    },
   }
 }
 
